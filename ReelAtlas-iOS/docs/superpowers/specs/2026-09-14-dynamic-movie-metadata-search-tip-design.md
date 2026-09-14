@@ -25,13 +25,12 @@ The script will emit a machine-readable report containing the starting missing c
 
 ## Runtime models
 
-The current mixed `MovieViewData` model will be separated conceptually into:
+The current `MovieViewData` interface remains the presentation model used by existing views. The bundled repository constructs it with identity and ReelSpan story fields plus empty metadata placeholders; the shared metadata store returns an enriched copy after a Worker response. This preserves existing feature interfaces while ensuring the placeholder fields are never populated from bundled TMDB data.
 
-- `MovieIdentity`: local internal ID, Wikidata QID, optional TMDB ID, and optional IMDb ID.
-- `MovieStoryData`: time ranges, locations, source/confidence fields, and other ReelSpan-owned attributes.
+New network-only models are limited to:
+
 - `MovieMetadata`: the Worker movie-detail response, including multiple directors and cast members.
 - `MovieSearchPage` and `MovieSearchItem`: the Worker search response and pagination fields.
-- `MoviePresentation`: a transient composition of identity, story data, and optional runtime metadata used by views.
 
 No view or view model may construct a TMDB or Worker URL. Image URLs are produced by a single metadata/image URL builder and return `nil` for absent or invalid paths.
 
@@ -90,11 +89,11 @@ Text editing must never await candidate generation. Each keystroke updates the t
 
 Regression coverage will include rapid typing where an early query returns after a later query, cancellation before debounce, cancellation during transport, first-result insertion while editing, and continued input while the candidate list is loading. UI instrumentation will record main-thread work around text changes to confirm the actual blocker before the production fix is selected.
 
-Worker search results are presented from `MovieSearchItem`. If a result's TMDB ID maps to a local `MovieIdentity`, its ReelSpan story data is attached. Otherwise the result may open a metadata-only detail page with story-time/location placeholders; search does not silently create bundled database records.
+Worker search results are presented from `MovieSearchItem`. If a result's TMDB ID maps to a local movie record, its ReelSpan story data is attached to the runtime `MovieViewData`. Otherwise the result may open a metadata-only detail page with story-time/location placeholders; search does not silently create bundled database records.
 
 ## Views
 
-Drawer rows, favorites rows, user movie-search results, and `MovieDetailView` all consume `MoviePresentation` from the shared store.
+Drawer rows, favorites rows, user movie-search results, and `MovieDetailView` continue consuming `MovieViewData`, enriched through the shared store.
 
 Rows initially show a fixed-size skeleton/placeholder and ReelSpan story-time/location data. On metadata arrival they update title, year, runtime, genres, rating, vote count, and poster without changing scroll identity. Detail-derived rows prefer the Worker's `posterUrl`; search-only results may use the centralized `posterPath` fallback. Tapping any movie opens the native `MovieDetailView`, never IMDb directly.
 
