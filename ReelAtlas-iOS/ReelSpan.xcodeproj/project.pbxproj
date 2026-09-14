@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AC0100000000000000000001 /* SearchAndTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0100000000000000000002 /* SearchAndTip.swift */; };
 		A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A110A110A110A110A110A110 /* MovieMetadataService.swift */; };
 		A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A112A112A112A112A112A112 /* MovieMetadataStore.swift */; };
 		A1C001000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1C001000000000000000002 /* Assets.xcassets */; };
@@ -63,6 +64,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AC0100000000000000000002 /* SearchAndTip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SearchAndTip.swift; path = "ReelAtlas/Core/SearchAndTip.swift"; sourceTree = SOURCE_ROOT; };
+		AC0100000000000000000003 /* Tips.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Tips.storekit; path = "ReelAtlas/Resources/Tips.storekit"; sourceTree = SOURCE_ROOT; };
 		A110A110A110A110A110A110 /* MovieMetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataService.swift; path = "ReelAtlas/Core/MovieMetadataService.swift"; sourceTree = SOURCE_ROOT; };
 		A112A112A112A112A112A112 /* MovieMetadataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataStore.swift; path = "ReelAtlas/Core/MovieMetadataStore.swift"; sourceTree = SOURCE_ROOT; };
 		A1C001000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = "ReelAtlas/Resources/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
@@ -127,6 +130,7 @@
 /* Begin PBXGroup section */
 		2EB2D8158FC6EF9EB19CB439 = {isa = PBXGroup; children = (2568F4DEBB06535449829F17 /* Sources */, 567F2FDE2E8D3E9A09D6C13B /* Resources */, 1E78B559816E575FC0BDB29C /* Products */); sourceTree = "<group>"; };
 		2568F4DEBB06535449829F17 /* Sources */ = {isa = PBXGroup; children = (
+			AC0100000000000000000002 /* SearchAndTip.swift */,
 			A110A110A110A110A110A110 /* MovieMetadataService.swift */,
 			A112A112A112A112A112A112 /* MovieMetadataStore.swift */,
 			9EF503381B992287151128BF /* AppModel.swift */,
@@ -167,6 +171,7 @@
 			B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */,
 		); name = Sources; sourceTree = "<group>"; };
 		567F2FDE2E8D3E9A09D6C13B /* Resources */ = {isa = PBXGroup; children = (
+			AC0100000000000000000003 /* Tips.storekit */,
 			A1C001000000000000000002 /* Assets.xcassets */,
 			D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */,
 			BB66BB66BB66BB66BB66BB66 /* ContentText_zh-Hans.sqlite */,
@@ -218,6 +223,7 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		B0193229F5D633567D732C36 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			AC0100000000000000000001 /* SearchAndTip.swift in Sources */,
 			A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */,
 			A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */,
 			5FD849EDF8AF183A0AE8AA71 /* AppModel.swift in Sources */,

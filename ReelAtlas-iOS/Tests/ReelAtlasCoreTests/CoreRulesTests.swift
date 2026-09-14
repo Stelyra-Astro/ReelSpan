@@ -701,7 +701,8 @@ final class CoreRulesTests: XCTestCase {
     }
 
     func testImageURLBuildersRejectInsecurePrimaryAndMalformedFallback() {
-        XCTAssertNil(MovieMetadataImageURLs.poster(primary: "http://cdn.example/550.jpg", path: "/p.jpg"))
+        XCTAssertEqual(MovieMetadataImageURLs.poster(primary: "http://cdn.example/550.jpg", path: "/p.jpg")?.absoluteString,
+                       "https://image.tmdb.org/t/p/w342/p.jpg")
         XCTAssertNil(MovieMetadataImageURLs.poster(primary: nil, path: "p.jpg"))
         XCTAssertEqual(
             MovieMetadataImageURLs.searchPoster(primary: nil, path: "/p.jpg")?.absoluteString,

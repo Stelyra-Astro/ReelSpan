@@ -44,7 +44,7 @@ final class ImageDownloadManager: ObservableObject {
     }
 
     func enrichedMovie(_ movie: MovieViewData) -> MovieViewData {
-        detailsByMovieID[movie.id].map(movie.enriching) ?? movie
+        movie
     }
 
     func saveTMDBAPIKey(_ value: String) {

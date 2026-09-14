@@ -19,9 +19,11 @@ final class AppModel: ObservableObject {
     @Published var iCloudBackupEnabled: Bool
 
     let imageManager = ImageDownloadManager()
+    let metadataStore = MovieMetadataStore()
+    let tipManager = TipPurchaseManager()
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
-    private let movieSearchWorker = MovieSearchWorker()
+    private let searchData = SearchDataWorker()
     private var users: UserDatabase?
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
@@ -103,6 +105,7 @@ final class AppModel: ObservableObject {
     }
 
     func toggleFavorite(_ movieID: Int) {
+        guard movieID > 0 else { return }
         let next = !favoriteIDs.contains(movieID)
         users?.setFavorite(movieID: movieID, isFavorite: next)
         if next { favoriteIDs.insert(movieID) } else { favoriteIDs.remove(movieID) }
@@ -156,39 +159,17 @@ final class AppModel: ObservableObject {
         await resolveSelection { try await MapSearchService.resolve(suggestion) }
     }
 
-    func indexedPlaceSuggestions(_ query: String) -> [MapSearchSuggestion] {
-        guard let content else { return [] }
-        return content.administrativeLocationMatches(query: query, preferredLanguage: effectiveLanguage).compactMap { location in
-            guard let coordinate = location.coordinate else { return nil }
-            var names = [location.name]
-            var countryName: String? = location.type == "country" ? location.name : nil
-            var parentID = location.parentID
-            var visited = Set([location.id])
-            while let id = parentID, !visited.contains(id), let parent = content.location(id: id, preferredLanguage: effectiveLanguage) {
-                visited.insert(id)
-                names.append(parent.name)
-                if parent.type == "country" { countryName = parent.name }
-                parentID = parent.parentID
-            }
-            let selection = MapSearchSelection(
-                displayName: location.name,
-                coordinate: coordinate,
-                candidateDatabaseNames: names,
-                countryFallbackName: countryName
-            )
-            return MapSearchSuggestion(
-                title: location.name,
-                subtitle: names.dropFirst().joined(separator: " · "),
-                selection: selection
-            )
+    func indexedPlaceSuggestions(_ query: String) async -> [MapSearchSuggestion] {
+        await searchData.places(query: query, language: effectiveLanguage).map { value in
+            MapSearchSuggestion(title: value.name, subtitle: value.names.dropFirst().joined(separator: " · "), selection:
+                MapSearchSelection(displayName: value.name,
+                    coordinate: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude),
+                    candidateDatabaseNames: value.names, countryFallbackName: value.country))
         }
     }
 
-    func movieSuggestions(_ query: String) async -> [MovieViewData] {
-        await movieSearchWorker.suggestions(
-            query: query,
-            preferredLanguage: effectiveLanguage
-        )
+    func searchMovies(_ items: [MovieSearchItem]) async -> [MovieViewData] {
+        await searchData.movies(items, language: effectiveLanguage)
     }
 
     func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D, reportErrors: Bool = true) async {
@@ -296,6 +277,47 @@ final class AppModel: ObservableObject {
         )
         displayedPlaceName = selectedLocation?.name ?? capital.name
         if selectedLocation != nil { reload() } else { movies = [] }
+    }
+}
+
+/// SQLite work stays off the main actor and never runs from a SwiftUI body.
+private actor SearchDataWorker {
+    private var content: ContentRepository?
+    private func repository() -> ContentRepository? {
+        if content == nil { content = try? ContentRepository() }
+        return content
+    }
+    struct Place: Sendable {
+        let name: String
+        let latitude: Double
+        let longitude: Double
+        let names: [String]
+        let country: String?
+    }
+    func places(query: String, language: String) -> [Place] {
+        guard !Task.isCancelled, query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2,
+              let content = repository() else { return [] }
+        return content.administrativeLocationMatches(query: query, preferredLanguage: language).compactMap { location in
+            guard !Task.isCancelled, let latitude = location.latitude, let longitude = location.longitude else { return nil }
+            var names = [location.name]
+            var country: String? = location.type == "country" ? location.name : nil
+            var parentID = location.parentID
+            var visited = Set([location.id])
+            while let id = parentID, !visited.contains(id), let parent = content.location(id: id, preferredLanguage: language) {
+                visited.insert(id)
+                names.append(parent.name)
+                if parent.type == "country" { country = parent.name }
+                parentID = parent.parentID
+            }
+            return Place(name: location.name, latitude: latitude, longitude: longitude, names: names, country: country)
+        }
+    }
+    func movies(_ items: [MovieSearchItem], language: String) -> [MovieViewData] {
+        let content = repository()
+        return items.compactMap { item in
+            guard !Task.isCancelled else { return nil }
+            return MovieViewData.searchResult(item, local: content?.movie(tmdbID: item.id, preferredLanguage: language))
+        }
     }
 }
 

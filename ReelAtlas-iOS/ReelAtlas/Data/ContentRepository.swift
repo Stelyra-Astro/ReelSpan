@@ -256,6 +256,13 @@ final class ContentRepository {
         )
     }
 
+    func movie(tmdbID: Int, preferredLanguage: String) -> MovieViewData? {
+        guard let statement = try? db.prepare("SELECT id FROM movies WHERE tmdb_id=? LIMIT 1", bindings: [.int(tmdbID)]) else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard (try? db.step(statement)) == true else { return nil }
+        return movie(id: db.int(statement, 0), preferredLanguage: preferredLanguage)
+    }
+
     func allMovies(preferredLanguage: String) -> [MovieViewData] {
         guard let statement = try? db.prepare(
             "SELECT id FROM movies ORDER BY release_year IS NULL, release_year DESC, title_en COLLATE NOCASE"

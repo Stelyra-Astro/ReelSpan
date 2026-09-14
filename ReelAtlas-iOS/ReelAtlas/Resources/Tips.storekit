@@ -1,0 +1,18 @@
+{
+  "identifier" : "7788E0B4-844C-4C38-8E0F-5CE4BB937A0C",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "E2039252",
+      "localizations" : [{ "description" : "A voluntary tip supporting ReelSpan.", "displayName" : "Support ReelSpan", "locale" : "en_US" }],
+      "productID" : "com.reelatlas.tip",
+      "referenceName" : "ReelSpan Tip",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : { "_failTransactionsEnabled" : false, "_locale" : "en_US", "_storefront" : "USA" },
+  "subscriptionGroups" : [],
+  "version" : { "major" : 3, "minor" : 0 }
+}
