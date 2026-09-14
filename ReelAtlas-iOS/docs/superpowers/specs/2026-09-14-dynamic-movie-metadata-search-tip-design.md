@@ -39,20 +39,22 @@ No view or view model may construct a TMDB or Worker URL. Image URLs are produce
 
 `MovieMetadataService` is the only owner of the Worker base URL:
 
-`https://tmdb.xiaoguiwk.top`
+`https://reelspan-tmdb.xiaoguiwk.workers.dev`
 
 Supported operations are:
 
-- `GET /movie/{tmdb_id}?language={language}` for a known TMDB ID;
-- `GET /search/movie?query={query}&language={language}&page={page}` only for active user movie search or an explicit missing-ID lookup workflow.
+- `GET /movie/{tmdb_id}?language=en-US` for a known TMDB ID;
+- `GET /search/movie?query={query}&language=en-US&page={page}` only for active user movie search or an explicit missing-ID lookup workflow.
 
-Known TMDB IDs always use the detail endpoint and are never rematched by title. The iOS project must contain no TMDB API key, read access token, `api.themoviedb.org` request, or direct-IP TLS transport. Images continue to use `https://image.tmdb.org/t/p/` with `w185` for list posters and profiles, `w342` for detail posters, and the existing appropriate backdrop size. A path must begin with `/`; `nil` and malformed paths produce no URL.
+All requests use `en-US` because the current persistent Worker cache supports only that language. Known TMDB IDs always use the detail endpoint and are never rematched by title. The iOS project must contain no TMDB API key, TMDB read access token, Supabase secret key, `api.themoviedb.org` request, direct Supabase database request, or direct-IP TLS transport.
+
+The app treats the Worker's `Cloudflare Cache → Supabase → TMDB` implementation as an opaque server concern. It neither reproduces that pipeline nor attempts to access its database. For movie-detail posters, `posterUrl` from the Worker is the primary image URL. Only when `posterUrl` is absent or invalid may the central image URL builder derive a fallback from `posterPath`. Search results currently lack `posterUrl`, so their temporary thumbnails may use a centrally constructed `posterPath` fallback until detail metadata loads. Other image paths use the same centralized validation rule. A fallback path must begin with `/`; `nil` and malformed paths produce no URL.
 
 Requests use async/await and an injected `URLSession`-compatible transport for testing. The service applies a finite request timeout and maps offline/cancellation, timeout, 404, 429, 5xx, decoding, and other response failures into explicit error categories. Cancellation is never surfaced as a user-visible error.
 
 ## Runtime cache
 
-Metadata JSON and downloaded images are stored below Application Support only after a request. Metadata cache keys include TMDB ID, normalized interface language, schema version, and response kind. Image keys include the TMDB path and requested size so list and detail variants cannot collide.
+Metadata JSON and downloaded images are stored below Application Support only after a request. This device cache is independent from, and has no knowledge of, the Worker's Cloudflare/Supabase caching. Metadata cache keys include TMDB ID, fixed language `en-US`, schema version, and response kind. Image keys include the resolved source URL and requested presentation size so list and detail variants cannot collide.
 
 Default policy:
 
@@ -68,7 +70,7 @@ Cache cleanup runs at service initialization and after successful writes. Cleari
 
 ## Loading and priority
 
-`MovieMetadataStore` is a main-actor observable facade backed by the service and a request scheduler. It deduplicates requests by TMDB ID and language and exposes per-item states: idle, loading, loaded, unavailable, and failed.
+`MovieMetadataStore` is a main-actor observable facade backed by the service and a request scheduler. It deduplicates requests by TMDB ID and fixed language `en-US` and exposes per-item states: idle, loading, loaded, unavailable, and failed.
 
 - A visible drawer or favorites row waits for a continuous one-second dwell before requesting metadata.
 - At most two list requests run concurrently at utility priority.
@@ -94,9 +96,9 @@ Worker search results are presented from `MovieSearchItem`. If a result's TMDB I
 
 Drawer rows, favorites rows, user movie-search results, and `MovieDetailView` all consume `MoviePresentation` from the shared store.
 
-Rows initially show a fixed-size skeleton/placeholder and ReelSpan story-time/location data. On metadata arrival they update title, year, runtime, genres, rating, vote count, and `w185` poster without changing scroll identity. Tapping any movie opens the native `MovieDetailView`, never IMDb directly.
+Rows initially show a fixed-size skeleton/placeholder and ReelSpan story-time/location data. On metadata arrival they update title, year, runtime, genres, rating, vote count, and poster without changing scroll identity. Detail-derived rows prefer the Worker's `posterUrl`; search-only results may use the centralized `posterPath` fallback. Tapping any movie opens the native `MovieDetailView`, never IMDb directly.
 
-The restored detail page immediately shows ReelSpan story information and placeholders for metadata. It progressively adds the TMDB title, original title when different, overview fallback text, tagline, `w342` poster, backdrop, release/runtime/language/status, genres, rating, multiple directors, and cast/profile images. Empty overview, director, or cast values use existing localized unavailable states rather than hiding ReelSpan story content.
+The restored detail page immediately shows ReelSpan story information and placeholders for metadata. It progressively adds the TMDB title, original title when different, overview fallback text, tagline, the Worker-supplied `posterUrl` image, backdrop, release/runtime/language/status, genres, rating, multiple directors, and cast/profile images. `posterPath` is used only when `posterUrl` is empty or invalid. Empty overview, director, or cast values use existing localized unavailable states rather than hiding ReelSpan story content.
 
 The detail page includes an explicit IMDb link. The favorite control remains in the hero/summary area. Directly below it, a small Tip button presents the tip sheet.
 
@@ -114,14 +116,14 @@ TMDB/Worker failure never blocks map selection, time filtering, story locations,
 
 The migration will update the importer, schema, generated content database, runtime repository queries, domain models, language-pack handling, and bundled resources. It will inspect every source and resource for obsolete metadata dependencies. Legacy runtime cache formats are versioned out and removed safely during initialization.
 
-Completion scans must find no TMDB secret patterns, `api.themoviedb.org`, direct API IP list, Keychain API-key store, metadata-setting UI, old TMDB response coding keys, bundled TMDB poster directory, or view-level API URL construction. `image.tmdb.org` remains intentionally present only in the central image URL builder.
+Completion scans must find no TMDB/Supabase secret patterns, old Worker domain, `api.themoviedb.org`, direct Supabase database endpoint, direct API IP list, Keychain API-key store, metadata-setting UI, old TMDB response coding keys, bundled TMDB poster directory, or view-level API URL construction. `image.tmdb.org` remains intentionally present only in the central fallback image URL builder.
 
 ## Verification
 
 Testing follows red-green-refactor cycles and covers:
 
 - decoding the observed Worker detail and search JSON shapes, including `null` paths and empty arrays;
-- exact URL construction, query encoding, language normalization, and absence of authentication material;
+- exact Worker URL construction, query encoding, fixed `en-US` requests, `posterUrl` precedence, `posterPath` fallback, and absence of authentication material;
 - HTTP/error mapping, timeouts, request cancellation, deduplication, concurrency limit, and detail priority;
 - cache hit/expiry/corruption/LRU eviction/atomic writes and the 30-day/150-MiB policy;
 - rapid search typing, latest-response wins, and preserved input focus/cursor behavior;
