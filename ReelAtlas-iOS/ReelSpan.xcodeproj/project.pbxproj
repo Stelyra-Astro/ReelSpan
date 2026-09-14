@@ -15,6 +15,8 @@
 		AA44AA44AA44AA44AA44AA44 /* MovieTextStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB44BB44BB44BB44BB44BB44 /* MovieTextStore.swift */; };
 		AA11AA11AA11AA11AA11AA11 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB11BB11BB11BB11BB11BB11 /* L10n.swift */; };
 		AA22AA22AA22AA22AA22AA22 /* GenreLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22BB22BB22BB22BB22BB22 /* GenreLocalization.swift */; };
+		A101A101A101A101A101A101 /* MovieMetadataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A102A102A102A102A102A102 /* MovieMetadataModels.swift */; };
+		A103A103A103A103A103A103 /* MovieMetadataRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A104A104A104A104A104A104 /* MovieMetadataRequest.swift */; };
 		AA33AA33AA33AA33AA33AA33 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = BB33BB33BB33BB33BB33BB33 /* Localizable.xcstrings */; };
 		5FD849EDF8AF183A0AE8AA71 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF503381B992287151128BF /* AppModel.swift */; };
 		3DEC398AE3A7CE9F5F4A965B /* ReelAtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E55BF5F8B10A148CDCE1D14 /* ReelAtlasApp.swift */; };
@@ -72,6 +74,8 @@
 		91B93D641D86DA36F2A4869E /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Domain.swift; path = "ReelAtlas/Core/Domain.swift"; sourceTree = SOURCE_ROOT; };
 		0BC1BD3B3BE5EA0528491E2A /* LanguageResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageResolver.swift; path = "ReelAtlas/Core/LanguageResolver.swift"; sourceTree = SOURCE_ROOT; };
 		0BC1BD3B3BE5EA0528491E2B /* TMDBImageMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TMDBImageMetadata.swift; path = "ReelAtlas/Core/TMDBImageMetadata.swift"; sourceTree = SOURCE_ROOT; };
+		A102A102A102A102A102A102 /* MovieMetadataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataModels.swift; path = "ReelAtlas/Core/MovieMetadataModels.swift"; sourceTree = SOURCE_ROOT; };
+		A104A104A104A104A104A104 /* MovieMetadataRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataRequest.swift; path = "ReelAtlas/Core/MovieMetadataRequest.swift"; sourceTree = SOURCE_ROOT; };
 		F339A0B8E2F629D8F3FB2D00 /* LocationFallbackResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocationFallbackResolver.swift; path = "ReelAtlas/Core/LocationFallbackResolver.swift"; sourceTree = SOURCE_ROOT; };
 		7AE8E1B1F7F0934246C1F270 /* RankingCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RankingCalculator.swift; path = "ReelAtlas/Core/RankingCalculator.swift"; sourceTree = SOURCE_ROOT; };
 		4A1E3BDCE6B767CB4A1A311C /* StoryTimeMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryTimeMatcher.swift; path = "ReelAtlas/Core/StoryTimeMatcher.swift"; sourceTree = SOURCE_ROOT; };
@@ -125,6 +129,8 @@
 			BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */,
 			0BC1BD3B3BE5EA0528491E2A /* LanguageResolver.swift */,
 			0BC1BD3B3BE5EA0528491E2B /* TMDBImageMetadata.swift */,
+			A102A102A102A102A102A102 /* MovieMetadataModels.swift */,
+			A104A104A104A104A104A104 /* MovieMetadataRequest.swift */,
 			F339A0B8E2F629D8F3FB2D00 /* LocationFallbackResolver.swift */,
 			7AE8E1B1F7F0934246C1F270 /* RankingCalculator.swift */,
 			4A1E3BDCE6B767CB4A1A311C /* StoryTimeMatcher.swift */,
@@ -210,6 +216,8 @@
 			AA99AA99AA99AA99AA99AA99 /* HistoricalYearFormatter.swift in Sources */,
 			C4DA915FA7BA04C5FB3375F3 /* LanguageResolver.swift in Sources */,
 			C4DA915FA7BA04C5FB3375F4 /* TMDBImageMetadata.swift in Sources */,
+			A101A101A101A101A101A101 /* MovieMetadataModels.swift in Sources */,
+			A103A103A103A103A103A103 /* MovieMetadataRequest.swift in Sources */,
 			4DE5D44A93B85EBE0821CEB5 /* LocationFallbackResolver.swift in Sources */,
 			EB426DD4C02DECE0F4E7972A /* RankingCalculator.swift in Sources */,
 			B183FF6C9FC38609B6D09D73 /* StoryTimeMatcher.swift in Sources */,

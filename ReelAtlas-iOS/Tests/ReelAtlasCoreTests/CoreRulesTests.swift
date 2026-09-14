@@ -369,4 +369,63 @@ final class CoreRulesTests: XCTestCase {
         )
     }
 
+    func testWorkerDetailDecodesPosterURLDirectorsAndCast() throws {
+        let data = #"{"id":550,"title":"Fight Club","originalTitle":"Fight Club","overview":"Overview","tagline":"Tagline","posterPath":"/poster.jpg","posterUrl":"https://cdn.example/posters/550.jpg","backdropPath":null,"releaseDate":"1999-10-15","runtime":139,"originalLanguage":"en","status":"Released","genres":[{"id":18,"name":"Drama"}],"rating":8.4,"voteCount":10,"popularity":3.0,"directors":[{"id":1,"name":"Director","originalName":"Director","profilePath":null}],"cast":[{"id":2,"name":"Actor","originalName":"Actor","character":"Lead","profilePath":null,"order":0}]}"#.data(using: .utf8)!
+        let value = try JSONDecoder().decode(MovieMetadata.self, from: data)
+
+        XCTAssertEqual(value.posterURL?.absoluteString, "https://cdn.example/posters/550.jpg")
+        XCTAssertEqual(value.directors.map(\.name), ["Director"])
+        XCTAssertEqual(value.cast.map(\.character), ["Lead"])
+    }
+
+    func testDetailRequestUsesOnlyWorkerAndFixedEnglish() throws {
+        let request = try MovieMetadataRequest.detail(tmdbID: 550).urlRequest
+
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://reelspan-tmdb.xiaoguiwk.workers.dev/movie/550?language=en-US"
+        )
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testPosterURLPrefersWorkerThenFallsBackToPath() {
+        XCTAssertEqual(
+            MovieMetadataImageURLs.poster(primary: "https://cdn.example/550.jpg", path: "/p.jpg")?.absoluteString,
+            "https://cdn.example/550.jpg"
+        )
+        XCTAssertEqual(
+            MovieMetadataImageURLs.poster(primary: nil, path: "/p.jpg")?.absoluteString,
+            "https://image.tmdb.org/t/p/w342/p.jpg"
+        )
+        XCTAssertNil(MovieMetadataImageURLs.poster(primary: nil, path: nil))
+    }
+
+    func testSearchRequestUsesWorkerEnglishAndEscapesQuery() throws {
+        let request = try MovieMetadataRequest.search(query: "Fight Club", page: 2).urlRequest
+
+        XCTAssertEqual(
+            request.url?.absoluteString,
+            "https://reelspan-tmdb.xiaoguiwk.workers.dev/search/movie?query=Fight%20Club&page=2&language=en-US"
+        )
+    }
+
+    func testMetadataRequestRejectsInvalidArguments() {
+        XCTAssertThrowsError(try MovieMetadataRequest.detail(tmdbID: 0).urlRequest)
+        XCTAssertThrowsError(try MovieMetadataRequest.search(query: "  ", page: 1).urlRequest)
+        XCTAssertThrowsError(try MovieMetadataRequest.search(query: "Fight Club", page: 0).urlRequest)
+    }
+
+    func testImageURLBuildersRejectInsecurePrimaryAndMalformedFallback() {
+        XCTAssertNil(MovieMetadataImageURLs.poster(primary: "http://cdn.example/550.jpg", path: "/p.jpg"))
+        XCTAssertNil(MovieMetadataImageURLs.poster(primary: nil, path: "p.jpg"))
+        XCTAssertEqual(
+            MovieMetadataImageURLs.searchPoster(primary: nil, path: "/p.jpg")?.absoluteString,
+            "https://image.tmdb.org/t/p/w185/p.jpg"
+        )
+        XCTAssertEqual(
+            MovieMetadataImageURLs.profile(path: "/person.jpg")?.absoluteString,
+            "https://image.tmdb.org/t/p/w185/person.jpg"
+        )
+    }
+
 }
