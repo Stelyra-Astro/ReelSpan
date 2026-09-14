@@ -1,0 +1,14 @@
+{
+  "note": "Illustrative development seed only. Replace with the Wikidata/TMDB ETL output before production.",
+  "database_version": "0.1-sample",
+  "movies": [
+    {"id":1,"wikidata_qid":"Q SAMPLE 1","tmdb_id":0,"title_en":"The Last Emperor","title_zh":"末代皇帝","release_year":1987,"runtime":163,"original_language":"en","rating":7.6,"votes":1800,"genres":["Drama","History","Biography"],"times":[[1908,1967]],"locations":["Beijing","Forbidden City","Tianjin"],"director":"Bernardo Bertolucci"},
+    {"id":2,"wikidata_qid":"Q SAMPLE 2","tmdb_id":0,"title_en":"Farewell My Concubine","title_zh":"霸王别姬","release_year":1993,"runtime":171,"original_language":"zh","rating":8.0,"votes":2500,"genres":["Drama","Romance","History"],"times":[[1924,1977]],"locations":["Beijing"],"director":"Chen Kaige"},
+    {"id":3,"wikidata_qid":"Q SAMPLE 3","tmdb_id":0,"title_en":"To Live","title_zh":"活着","release_year":1994,"runtime":133,"original_language":"zh","rating":8.1,"votes":4100,"genres":["Drama","History"],"times":[[1940,1970]],"locations":["China"],"director":"Zhang Yimou"},
+    {"id":4,"wikidata_qid":"Q SAMPLE 4","tmdb_id":0,"title_en":"Black Snow","title_zh":"本命年","release_year":1990,"runtime":107,"original_language":"zh","rating":7.1,"votes":820,"genres":["Crime","Drama"],"times":[[1990,1999]],"locations":["Beijing"],"director":"Xie Fei"},
+    {"id":5,"wikidata_qid":"Q SAMPLE 5","tmdb_id":0,"title_en":"Beijing Bicycle","title_zh":"十七岁的单车","release_year":2001,"runtime":113,"original_language":"zh","rating":7.2,"votes":950,"genres":["Drama"],"times":[[2000,2009]],"locations":["Beijing"],"director":"Wang Xiaoshuai"},
+    {"id":6,"wikidata_qid":"Q SAMPLE 6","tmdb_id":0,"title_en":"The Blue Kite","title_zh":"蓝风筝","release_year":1993,"runtime":140,"original_language":"zh","rating":7.7,"votes":1200,"genres":["Drama","History"],"times":[[1953,1967]],"locations":["Beijing"],"director":"Tian Zhuangzhuang"},
+    {"id":7,"wikidata_qid":"Q SAMPLE 7","tmdb_id":0,"title_en":"Summer Palace","title_zh":"颐和园","release_year":2006,"runtime":140,"original_language":"zh","rating":7.1,"votes":700,"genres":["Drama","Romance"],"times":[[1987,2003]],"locations":["Beijing"],"director":"Lou Ye"},
+    {"id":8,"wikidata_qid":"Q SAMPLE 8","tmdb_id":0,"title_en":"Contemporary Beijing Documentary","title_zh":"当代北京纪实","release_year":2025,"runtime":96,"original_language":"zh","rating":7.4,"votes":520,"genres":["Documentary"],"times":[[2020,2029]],"locations":["Beijing"],"director":"Sample Director"}
+  ]
+}

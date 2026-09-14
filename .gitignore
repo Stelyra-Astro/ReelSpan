@@ -1,0 +1,6 @@
+.DS_Store
+.superpowers/
+.worktrees/
+reelspan-missing-story-time.zip
+ReelAtlas-iOS/Artifacts/
+ReelAtlas-iOS/Data/content_seed.sqlite.backup-*
