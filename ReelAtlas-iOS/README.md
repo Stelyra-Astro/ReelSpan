@@ -18,7 +18,7 @@ The generation environment does not contain Xcode/MapKit, so the final native ta
 - Multiple independent story-time ranges per movie.
 - Multiple direct narrative locations per movie.
 - Exact location first; if there are no results, fall back through administrative parents until country.
-- Movie list: small local poster, title, release year, runtime, genre tags, TMDB rating/count, story locations and story times.
+- Movie list: dynamically loaded title, poster, release year, runtime, genre tags, TMDB rating/count, plus bundled ReelSpan story locations and story times.
 - Movie detail: backdrop, larger poster, overview, director, cast, full time/location data, runtime and release metadata.
 - Favorites stored only on device.
 - Feature-length documentaries remain in the movie dataset.
@@ -36,20 +36,12 @@ The project deliberately separates replaceable content data from user data.
 
 ### `content_seed.sqlite`
 Core database imported from the current regional CSV package, containing:
-- all fields from `target.csv`, `movies.csv`, `movie_target_matches.csv`, `movie_locations.csv`, `movie_periods.csv`, `places.csv`, and `normalization_issues.csv`,
-- unmodified JSON payloads and all movie/place/administrative QIDs,
+- only `id`, `movie_qid`, `imdb_id`, and `tmdb_movie_id` in `movies`,
+- ReelSpan place, administrative, story-location, story-period, source, and confidence data,
 - target-scoped movie-location rows so `is_target_match` retains its regional meaning,
 - unique movie-to-target matches and independent story-period ranges.
 
-### `ContentText_en.sqlite`
-English movie title/overview language pack.
-
-### `ContentText_zh-Hans.sqlite`
-Simplified-Chinese movie title/overview language pack.
-
-The app also checks `Application Support/ReelAtlas/Languages/ContentText_<language>.sqlite` first. That allows later downloadable language packs without changing the core content schema.
-
-Movie labels now come directly from each CSV `labels_json` value. Resolution uses the selected/system language and then English.
+Movie titles, overviews, artwork, release/runtime/rating fields, genres, directors, and cast are not bundled. They are requested from the configured metadata Worker and cached only after use.
 
 Map labels remain controlled by Apple Maps and the system locale.
 
@@ -60,13 +52,11 @@ Created at runtime and kept separate from content updates. It stores favorites a
 UI copy uses `ReelAtlas/Resources/Localizable.xcstrings` and follows the iPhone system language. English and Simplified Chinese are included in this MVP. The movie-content language setting is separate from the app UI language and follows the fallback rule above.
 
 ## Image strategy
-- Small posters are bundled locally for the MVP.
-- Settings offers **Download Large Posters** and **Download Backdrops**.
-- Downloaded files are stored under Application Support and can be cleared independently.
-- The sample seed intentionally contains no production TMDB image URLs; real URLs are supplied by the licensed production ETL.
+- No movie artwork is bundled.
+- Artwork returned by the metadata Worker is cached under Application Support and can be cleared independently.
 
 ## CSV import files
-- `Data/schema.sql` — schema for the current CSV fields.
+- `Data/schema.sql` — runtime schema; verbose upstream movie metadata is validated but not persisted.
 - `Data/content_seed.sqlite` — canonical imported database.
 - `Scripts/import_csv.py` — repeatable ZIP/directory importer.
 - `docs/DATA_PIPELINE.md` — merge, validation, and runtime-query contract.

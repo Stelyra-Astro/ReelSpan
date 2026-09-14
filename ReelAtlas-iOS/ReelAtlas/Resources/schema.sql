@@ -22,31 +22,8 @@ CREATE TABLE targets (
 CREATE TABLE movies (
   movie_qid TEXT PRIMARY KEY,
   id INTEGER UNIQUE NOT NULL,
-  title_en TEXT NOT NULL,
-  title_zh TEXT NOT NULL,
-  labels_json TEXT NOT NULL CHECK (json_valid(labels_json)),
-  release_date TEXT,
-  release_year INTEGER,
-  director_qids_json TEXT NOT NULL CHECK (json_valid(director_qids_json)),
-  directors_json TEXT NOT NULL CHECK (json_valid(directors_json)),
-  origin_country_qids_json TEXT NOT NULL CHECK (json_valid(origin_country_qids_json)),
-  origin_countries_json TEXT NOT NULL CHECK (json_valid(origin_countries_json)),
-  genre_qids_json TEXT NOT NULL CHECK (json_valid(genre_qids_json)),
-  genres_json TEXT NOT NULL CHECK (json_valid(genres_json)),
-  original_language_qids_json TEXT NOT NULL CHECK (json_valid(original_language_qids_json)),
-  original_languages_json TEXT NOT NULL CHECK (json_valid(original_languages_json)),
   imdb_id TEXT,
-  tmdb_movie_id INTEGER,
-  runtime REAL,
-  image TEXT,
-  period_qids_json TEXT NOT NULL CHECK (json_valid(period_qids_json)),
-  tmdb_overview TEXT NOT NULL DEFAULT '',
-  tmdb_tagline TEXT NOT NULL DEFAULT '',
-  overview_en TEXT NOT NULL DEFAULT '',
-  overview_source TEXT NOT NULL DEFAULT '',
-  overview_source_title TEXT NOT NULL DEFAULT '',
-  overview_source_url TEXT NOT NULL DEFAULT '',
-  overview_license TEXT NOT NULL DEFAULT ''
+  tmdb_movie_id INTEGER
 );
 
 CREATE TABLE movie_target_matches (
@@ -131,7 +108,7 @@ CREATE TABLE normalization_issues (
 );
 
 CREATE INDEX idx_targets_names ON targets(name_en, name_zh);
-CREATE INDEX idx_movies_release_year ON movies(release_year, movie_qid);
+CREATE INDEX idx_movies_tmdb_id ON movies(tmdb_movie_id, id);
 CREATE INDEX idx_movie_target_matches_target ON movie_target_matches(target_qid, movie_qid);
 CREATE INDEX idx_movie_locations_movie ON movie_locations(movie_qid, raw_place_qid);
 CREATE INDEX idx_movie_locations_raw_place ON movie_locations(raw_place_qid, movie_qid);

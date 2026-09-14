@@ -303,7 +303,7 @@ def import_csv_tree(
 
         movie_rows = entity_rows["movies.csv"]
         movie_ids = {row["movie_qid"]: index for index, row in enumerate(movie_rows, 1)}
-        movie_columns = ("movie_qid", "id") + CSV_HEADERS["movies.csv"][1:]
+        movie_columns = ("movie_qid", "id", "imdb_id", "tmdb_movie_id")
         movie_sql = (
             f"INSERT INTO movies ({','.join(movie_columns)}) "
             f"VALUES ({','.join('?' for _ in movie_columns)})"
@@ -311,7 +311,7 @@ def import_csv_tree(
         for row in movie_rows:
             connection.execute(movie_sql, (
                 row["movie_qid"], movie_ids[row["movie_qid"]],
-                *(_convert("movies.csv", column, row[column]) for column in CSV_HEADERS["movies.csv"][1:]),
+                row["imdb_id"] or None, _convert("movies.csv", "tmdb_movie_id", row["tmdb_movie_id"]),
             ))
         counts["movies"] = len(movie_rows)
 
@@ -416,7 +416,7 @@ def _copy_existing_database(connection: sqlite3.Connection, source: Path) -> Non
     connection.execute("ATTACH DATABASE ? AS old", (str(source),))
     tables = {
         "targets": CSV_HEADERS["target.csv"],
-        "movies": ("movie_qid", "id", *CSV_HEADERS["movies.csv"][1:]),
+        "movies": ("movie_qid", "id", "imdb_id", "tmdb_movie_id"),
         "movie_target_matches": CSV_HEADERS["movie_target_matches.csv"],
         "places": CSV_HEADERS["places.csv"],
         "movie_locations": ("source_target_qid", *CSV_HEADERS["movie_locations.csv"]),
@@ -470,10 +470,8 @@ def merge_global_csv_tree(
         _copy_existing_database(connection, database_path)
 
         next_movie_id = connection.execute("SELECT COALESCE(MAX(id),0) FROM movies").fetchone()[0] + 1
-        movie_columns = ("movie_qid", "id", *CSV_HEADERS["movies.csv"][1:])
-        movie_updates = ",".join(
-            f"{column}=excluded.{column}" for column in CSV_HEADERS["movies.csv"][1:]
-        )
+        movie_columns = ("movie_qid", "id", "imdb_id", "tmdb_movie_id")
+        movie_updates = "imdb_id=excluded.imdb_id,tmdb_movie_id=excluded.tmdb_movie_id"
         movie_sql = (
             f"INSERT INTO movies ({','.join(movie_columns)}) VALUES ({','.join('?' for _ in movie_columns)}) "
             f"ON CONFLICT(movie_qid) DO UPDATE SET {movie_updates}"
@@ -482,7 +480,7 @@ def merge_global_csv_tree(
             before = connection.total_changes
             connection.execute(movie_sql, (
                 row["movie_qid"], next_movie_id,
-                *(_convert("movies.csv", column, row[column]) for column in CSV_HEADERS["movies.csv"][1:]),
+                row["imdb_id"] or None, _convert("movies.csv", "tmdb_movie_id", row["tmdb_movie_id"]),
             ))
             if connection.total_changes > before:
                 next_movie_id += 1

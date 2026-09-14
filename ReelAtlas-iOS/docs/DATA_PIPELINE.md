@@ -12,7 +12,9 @@ The import uses only the supplied regional copies of:
 - `places.csv`
 - `normalization_issues.csv`
 
-It does not query Wikidata, TMDB, or any other external source. Headers must exactly match the fields declared by the current schema. JSON values are validated and stored unchanged as SQLite `TEXT`.
+The importer itself does not query external services. Headers must match the upstream export contract and JSON values are validated. Movie metadata fields are deliberately discarded; only `id`, `movie_qid`, `imdb_id`, and `tmdb_movie_id` are persisted in `movies`.
+
+Missing `tmdb_movie_id` values can be backfilled separately with `Scripts/backfill_tmdb_ids.py`. That tool queries only the Wikidata item's `P4947`, accepts a single positive integer, and writes a resumable checkpoint and audit report. It never guesses by title.
 
 ## Regional merge rules
 
@@ -26,7 +28,7 @@ Each non-empty regional directory contains one `target.csv` row. `movies`, `plac
 
 ## Runtime queries
 
-The app searches indexed targets from `targets`, filters movies by `movie_target_matches`, applies story years through `movie_periods`, and reads raw narrative places from `movie_locations`. Display titles, directors, origin countries, genres, and original languages are decoded from the CSV JSON fields.
+The app searches indexed targets from `targets`, filters movies by `movie_target_matches`, applies story years through `movie_periods`, and reads raw narrative places from `movie_locations`. Movie metadata is fetched dynamically through `MovieMetadataService` and cached only after a user request.
 
 ## Import command
 
