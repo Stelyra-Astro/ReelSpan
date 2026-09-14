@@ -18,7 +18,6 @@ final class AppModel: ObservableObject {
     @Published var isSearching = false
     @Published var iCloudBackupEnabled: Bool
 
-    let imageManager = ImageDownloadManager()
     let metadataStore = MovieMetadataStore()
     let tipManager = TipPurchaseManager()
     let iCloudBackup = ICloudBackupManager()
@@ -41,7 +40,6 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        imageManager.onCacheChanged = { [weak self] in self?.scheduleICloudBackup() }
         if iCloudBackupEnabled {
             Task { [weak self] in await self?.restoreICloudBackup() }
         }
@@ -127,14 +125,12 @@ final class AppModel: ObservableObject {
             interfaceLanguage: interfaceLanguagePreference,
             updatedAt: Date()
         )
-        await iCloudBackup.backup(manifest, localCacheDirectory: imageManager.cacheDirectoryForBackup)
+        await iCloudBackup.backup(manifest)
     }
 
     private func restoreICloudBackup() async {
         guard iCloudBackupEnabled, let content else { return }
-        guard let manifest = await iCloudBackup.restore(
-            localCacheDirectory: imageManager.cacheDirectoryForBackup
-        ) else { return }
+        guard let manifest = await iCloudBackup.restore() else { return }
         let restoredIDs = content.movieIDs(qids: manifest.favoriteMovieQIDs)
         favoriteIDs = restoredIDs
         users?.replaceFavorites(with: restoredIDs)
@@ -142,7 +138,6 @@ final class AppModel: ObservableObject {
             interfaceLanguagePreference = manifest.interfaceLanguage
             UserDefaults.standard.set(manifest.interfaceLanguage, forKey: "interfaceLanguage")
         }
-        imageManager.refreshCacheSize()
         reload()
     }
 

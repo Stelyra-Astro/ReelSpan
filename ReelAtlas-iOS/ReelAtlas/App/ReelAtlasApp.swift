@@ -8,7 +8,6 @@ struct ReelAtlasApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
-                .environmentObject(model.imageManager)
                 .environment(\.locale, Locale(identifier: model.effectiveInterfaceLanguage))
         }
     }

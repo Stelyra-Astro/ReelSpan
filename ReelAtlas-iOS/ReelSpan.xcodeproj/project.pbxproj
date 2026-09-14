@@ -24,7 +24,6 @@
 		3DEC398AE3A7CE9F5F4A965B /* ReelAtlasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E55BF5F8B10A148CDCE1D14 /* ReelAtlasApp.swift */; };
 		AF51D791F464B8E48D129932 /* Domain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B93D641D86DA36F2A4869E /* Domain.swift */; };
 		C4DA915FA7BA04C5FB3375F3 /* LanguageResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC1BD3B3BE5EA0528491E2A /* LanguageResolver.swift */; };
-		C4DA915FA7BA04C5FB3375F4 /* TMDBImageMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC1BD3B3BE5EA0528491E2B /* TMDBImageMetadata.swift */; };
 		4DE5D44A93B85EBE0821CEB5 /* LocationFallbackResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F339A0B8E2F629D8F3FB2D00 /* LocationFallbackResolver.swift */; };
 		EB426DD4C02DECE0F4E7972A /* RankingCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AE8E1B1F7F0934246C1F270 /* RankingCalculator.swift */; };
 		B183FF6C9FC38609B6D09D73 /* StoryTimeMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A1E3BDCE6B767CB4A1A311C /* StoryTimeMatcher.swift */; };
@@ -43,7 +42,6 @@
 		CB1076C84BD57B760C1C6FF2 /* LegalPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08FD487AC1CCA21C1D54DBCE /* LegalPage.swift */; };
 		B4F683168D6A06CFE21D97A7 /* LegalPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1DEA2EBACA3B5907301CEC0 /* LegalPageView.swift */; };
 		C39F17A9D8D426101588E4EF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401E5A1B5F40634691E95B18 /* SettingsView.swift */; };
-		B608C8D8F7A4E3AA93497B0B /* ImageDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1B7DEB9228E936CC8ABCDC /* ImageDownloadManager.swift */; };
 		208E9A9A576B2D68BA8ACC98 /* MapSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD9BD357F250E7699B3AFC7 /* MapSearchService.swift */; };
 		FE31D6C0EE53232F44E942C6 /* PurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */; };
 		129785BC76F0FF96E409F926 /* content_seed.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */; };
@@ -68,7 +66,6 @@
 		5E55BF5F8B10A148CDCE1D14 /* ReelAtlasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReelAtlasApp.swift; path = "ReelAtlas/App/ReelAtlasApp.swift"; sourceTree = SOURCE_ROOT; };
 		91B93D641D86DA36F2A4869E /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Domain.swift; path = "ReelAtlas/Core/Domain.swift"; sourceTree = SOURCE_ROOT; };
 		0BC1BD3B3BE5EA0528491E2A /* LanguageResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LanguageResolver.swift; path = "ReelAtlas/Core/LanguageResolver.swift"; sourceTree = SOURCE_ROOT; };
-		0BC1BD3B3BE5EA0528491E2B /* TMDBImageMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TMDBImageMetadata.swift; path = "ReelAtlas/Core/TMDBImageMetadata.swift"; sourceTree = SOURCE_ROOT; };
 		A102A102A102A102A102A102 /* MovieMetadataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataModels.swift; path = "ReelAtlas/Core/MovieMetadataModels.swift"; sourceTree = SOURCE_ROOT; };
 		A104A104A104A104A104A104 /* MovieMetadataRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataRequest.swift; path = "ReelAtlas/Core/MovieMetadataRequest.swift"; sourceTree = SOURCE_ROOT; };
 		A106A106A106A106A106A106 /* MovieMetadataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataCache.swift; path = "ReelAtlas/Core/MovieMetadataCache.swift"; sourceTree = SOURCE_ROOT; };
@@ -91,7 +88,6 @@
 		08FD487AC1CCA21C1D54DBCE /* LegalPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegalPage.swift; path = "ReelAtlas/Features/Settings/LegalPage.swift"; sourceTree = SOURCE_ROOT; };
 		A1DEA2EBACA3B5907301CEC0 /* LegalPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegalPageView.swift; path = "ReelAtlas/Features/Settings/LegalPageView.swift"; sourceTree = SOURCE_ROOT; };
 		401E5A1B5F40634691E95B18 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = "ReelAtlas/Features/Settings/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
-		EE1B7DEB9228E936CC8ABCDC /* ImageDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageDownloadManager.swift; path = "ReelAtlas/Services/ImageDownloadManager.swift"; sourceTree = SOURCE_ROOT; };
 		5CD9BD357F250E7699B3AFC7 /* MapSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapSearchService.swift; path = "ReelAtlas/Services/MapSearchService.swift"; sourceTree = SOURCE_ROOT; };
 		B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PurchaseManager.swift; path = "ReelAtlas/Services/PurchaseManager.swift"; sourceTree = SOURCE_ROOT; };
 		D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; name = content_seed.sqlite; path = "ReelAtlas/Resources/content_seed.sqlite"; sourceTree = SOURCE_ROOT; };
@@ -120,7 +116,6 @@
 			91B93D641D86DA36F2A4869E /* Domain.swift */,
 			BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */,
 			0BC1BD3B3BE5EA0528491E2A /* LanguageResolver.swift */,
-			0BC1BD3B3BE5EA0528491E2B /* TMDBImageMetadata.swift */,
 			A102A102A102A102A102A102 /* MovieMetadataModels.swift */,
 			A104A104A104A104A104A104 /* MovieMetadataRequest.swift */,
 			A106A106A106A106A106A106 /* MovieMetadataCache.swift */,
@@ -143,7 +138,6 @@
 			08FD487AC1CCA21C1D54DBCE /* LegalPage.swift */,
 			A1DEA2EBACA3B5907301CEC0 /* LegalPageView.swift */,
 			401E5A1B5F40634691E95B18 /* SettingsView.swift */,
-			EE1B7DEB9228E936CC8ABCDC /* ImageDownloadManager.swift */,
 			5CD9BD357F250E7699B3AFC7 /* MapSearchService.swift */,
 			B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */,
 		); name = Sources; sourceTree = "<group>"; };
@@ -192,7 +186,6 @@
 			AF51D791F464B8E48D129932 /* Domain.swift in Sources */,
 			AA99AA99AA99AA99AA99AA99 /* HistoricalYearFormatter.swift in Sources */,
 			C4DA915FA7BA04C5FB3375F3 /* LanguageResolver.swift in Sources */,
-			C4DA915FA7BA04C5FB3375F4 /* TMDBImageMetadata.swift in Sources */,
 			A101A101A101A101A101A101 /* MovieMetadataModels.swift in Sources */,
 			A103A103A103A103A103A103 /* MovieMetadataRequest.swift in Sources */,
 			A105A105A105A105A105A105 /* MovieMetadataCache.swift in Sources */,
@@ -215,7 +208,6 @@
 			CB1076C84BD57B760C1C6FF2 /* LegalPage.swift in Sources */,
 			B4F683168D6A06CFE21D97A7 /* LegalPageView.swift in Sources */,
 			C39F17A9D8D426101588E4EF /* SettingsView.swift in Sources */,
-			B608C8D8F7A4E3AA93497B0B /* ImageDownloadManager.swift in Sources */,
 			208E9A9A576B2D68BA8ACC98 /* MapSearchService.swift in Sources */,
 			FE31D6C0EE53232F44E942C6 /* PurchaseManager.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };

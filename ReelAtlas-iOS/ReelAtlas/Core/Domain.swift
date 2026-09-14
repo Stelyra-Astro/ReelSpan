@@ -1,16 +1,5 @@
 import Foundation
 
-public enum PosterAssetURL {
-    private static let baseURL = URL(
-        string: "https://qvfdtvfgnlpctcykpfgy.supabase.co/storage/v1/object/public/posters/"
-    )!
-
-    public static func url(assetID: Int?) -> URL? {
-        guard let assetID else { return nil }
-        return baseURL.appendingPathComponent("\(assetID).jpg")
-    }
-}
-
 public enum GenreDisplayName {
     private static let localizationKeyByEnglishName: [String: String] = [
         "action": "genre.action",

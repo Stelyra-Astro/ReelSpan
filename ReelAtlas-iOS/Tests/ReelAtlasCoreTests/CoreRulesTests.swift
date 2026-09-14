@@ -287,14 +287,6 @@ final class MovieMetadataServiceTests: XCTestCase {
 }
 
 final class CoreRulesTests: XCTestCase {
-    func testPosterAssetURLUsesPublicSupabasePosterPath() {
-        XCTAssertEqual(
-            PosterAssetURL.url(assetID: 1_269_835)?.absoluteString,
-            "https://qvfdtvfgnlpctcykpfgy.supabase.co/storage/v1/object/public/posters/1269835.jpg"
-        )
-        XCTAssertNil(PosterAssetURL.url(assetID: nil))
-    }
-
     func testGenreDisplayNameRemovesOnlyTrailingFilmDescriptor() {
         XCTAssertEqual(GenreDisplayName.normalized("drama film"), "drama")
         XCTAssertEqual(GenreDisplayName.normalized("children's film"), "children's")
@@ -507,26 +499,6 @@ final class CoreRulesTests: XCTestCase {
         XCTAssertFalse(StoryTimeAvailabilityMatcher.includesUnknown(startYear: 1600, endYear: 2000))
     }
 
-    func testTMDBDetailsDecodesOverviewCreditsAndArtwork() throws {
-        let json = #"{"title":"Localized title","overview":"Remote overview","tagline":"A tagline","release_date":"2001-02-03","runtime":123,"original_language":"zh","vote_average":7.6,"vote_count":45,"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg","genres":[{"id":18,"name":"Drama"}],"production_countries":[{"iso_3166_1":"CN","name":"China"}],"credits":{"cast":[{"id":9,"name":"Actor","character":"Lead","order":0,"profile_path":"/actor.jpg"}],"crew":[{"id":10,"name":"Director","job":"Director"}]}}"#.data(using: .utf8)!
-        let details = try JSONDecoder().decode(TMDBMovieDetails.self, from: json)
-
-        XCTAssertEqual(details.overview, "Remote overview")
-        XCTAssertEqual(details.directors, ["Director"])
-        XCTAssertEqual(details.cast.first?.name, "Actor")
-        XCTAssertEqual(details.posterURL?.absoluteString, "https://image.tmdb.org/t/p/w185/poster.jpg")
-        XCTAssertEqual(details.backdropURL?.absoluteString, "https://image.tmdb.org/t/p/w1280/backdrop.jpg")
-        XCTAssertEqual(details.cast.first?.profileURL?.absoluteString, "https://image.tmdb.org/t/p/w185/actor.jpg")
-    }
-
-    func testArtworkCachePolicyUsesOneSecondDwellAndThirtyDayExpiry() {
-        XCTAssertEqual(ArtworkCachePolicy.rowDwellNanoseconds, 1_000_000_000)
-        XCTAssertEqual(ArtworkCachePolicy.maximumAge, 30 * 24 * 60 * 60)
-        XCTAssertEqual(ArtworkCachePolicy.posterSize, "w185")
-        XCTAssertEqual(ArtworkCachePolicy.maximumBytes, 150 * 1_024 * 1_024)
-        XCTAssertEqual(ArtworkCachePolicy.maximumConcurrentVisibleRequests, 2)
-    }
-
     func testContemporaryNormalizesToReleaseDecade() {
         let range = TimeNormalizer.contemporaryRange(releaseYear: 1994)
         XCTAssertEqual(range.startYear, 1990)
@@ -556,15 +528,6 @@ final class CoreRulesTests: XCTestCase {
             InterfaceLanguageResolver.identifier(preference: "system", systemLanguages: ["fr-FR"]),
             "fr"
         )
-    }
-
-    func testTMDBImageMetadataBuildsSecureImageURLs() throws {
-        let data = #"{"poster_path":"/poster.jpg","backdrop_path":"/backdrop.jpg"}"#.data(using: .utf8)!
-        let metadata = try JSONDecoder().decode(TMDBImageMetadata.self, from: data)
-
-        XCTAssertEqual(metadata.posterURL?.absoluteString, "https://image.tmdb.org/t/p/w185/poster.jpg")
-        XCTAssertEqual(metadata.backdropURL?.absoluteString, "https://image.tmdb.org/t/p/w1280/backdrop.jpg")
-        XCTAssertNil(TMDBImageMetadata(posterPath: nil, backdropPath: nil).posterURL)
     }
 
     func testBayesianRankingRewardsLargeVoteCounts() {
