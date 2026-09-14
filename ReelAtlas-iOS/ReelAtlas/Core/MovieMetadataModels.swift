@@ -120,6 +120,10 @@ public struct MovieMetadata: Codable, Equatable, Sendable {
     public var posterURL: URL? {
         MovieMetadataImageURLs.poster(primary: posterUrl, path: posterPath)
     }
+
+    public var thumbnailPosterURL: URL? {
+        MovieMetadataImageURLs.searchPoster(primary: posterUrl, path: posterPath)
+    }
 }
 
 public struct MovieSearchPage: Codable, Equatable, Sendable {
@@ -192,6 +196,10 @@ public enum MovieMetadataImageURLs {
         fallbackURL(path: path, size: "w185")
     }
 
+    public static func backdrop(path: String?) -> URL? {
+        fallbackURL(path: path, size: "w780")
+    }
+
     private static func primaryURL(_ value: String?) -> URL? {
         guard let value,
               let url = URL(string: value),
@@ -203,7 +211,7 @@ public enum MovieMetadataImageURLs {
     }
 
     private static func primaryOrFallback(primary: String?, path: String?, size: String) -> URL? {
-        if primary != nil { return primaryURL(primary) }
+        if let url = primaryURL(primary) { return url }
         return fallbackURL(path: path, size: size)
     }
 

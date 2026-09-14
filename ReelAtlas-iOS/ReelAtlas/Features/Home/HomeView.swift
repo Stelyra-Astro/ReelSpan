@@ -1,7 +1,6 @@
 import SwiftUI
 import MapKit
 import UIKit
-import SafariServices
 
 struct HomeView: View {
     private enum PendingModal {
@@ -18,14 +17,15 @@ struct HomeView: View {
     @State private var showYearPicker = false
     @State private var showSettings = false
     @State private var showFavorites = false
-    @State private var selectedDrawerIMDb: IMDbSafariDestination?
-    @State private var selectedSearchIMDb: IMDbSafariDestination?
+    @State private var selectedDrawerMovie: MovieViewData?
+    @State private var selectedSearchMovie: MovieViewData?
     @StateObject private var placeSearch = AdministrativePlaceSearch()
     @State private var searchIsFocused = false
     @State private var movieSearchResults: [MovieViewData] = []
-    @State private var movieSearchRequestTracker = SearchRequestTracker()
-    @State private var movieSearchTask: Task<Void, Never>?
-    @State private var movieSearchIsPending = false
+    @State private var movieSearch = LatestMovieSearch()
+    @State private var indexedPlaces: [MapSearchSuggestion] = []
+    @State private var placeTask: Task<Void, Never>?
+    @State private var movieMappingTask: Task<Void, Never>?
     @State private var isSearchExpanded = false
     @State private var isTimelineExpanded = false
     @State private var mapCenterTask: Task<Void, Never>?
@@ -115,9 +115,22 @@ struct HomeView: View {
         .sheet(isPresented: $showFavorites, onDismiss: restoreResultsDrawer) {
             FavoritesView().environmentObject(model)
         }
-        .fullScreenCover(item: $selectedSearchIMDb) { destination in
-            IMDbSafariView(url: destination.url)
-                .ignoresSafeArea()
+        .fullScreenCover(item: $selectedSearchMovie, onDismiss: restoreResultsDrawer) { movie in
+            MovieDetailView(movie: movie).environmentObject(model)
+        }
+        .onChange(of: movieSearch.page) { _, page in
+            movieMappingTask?.cancel()
+            guard let page else { movieSearchResults = []; return }
+            movieMappingTask = Task {
+                let results = await model.searchMovies(page.results)
+                guard !Task.isCancelled else { return }
+                movieSearchResults = results
+            }
+        }
+        .onDisappear {
+            movieSearch.cancel()
+            placeTask?.cancel()
+            movieMappingTask?.cancel()
         }
         .alert(
             L10n.text("app.name"),
@@ -215,7 +228,7 @@ struct HomeView: View {
                         .onChange(of: searchIsFocused) { _, focused in
                             if focused { drawerState.searchFocused() }
                         }
-                        if model.isSearching || movieSearchIsPending {
+                        if model.isSearching || movieSearch.isPending {
                             ProgressView().controlSize(.small)
                         }
                     }
@@ -224,6 +237,11 @@ struct HomeView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     if !combinedSearchSuggestions.isEmpty { searchSuggestions }
+                    if movieSearch.error != nil {
+                        Text("Movie search is temporarily unavailable. Try again shortly.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    }
                 }
                 .shadow(radius: 8, y: 3)
             } else {
@@ -320,9 +338,14 @@ struct HomeView: View {
                         choose(suggestion)
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: suggestion.symbolName)
-                                .foregroundStyle(Color(red: 0.45, green: 0.16, blue: 0.12))
-                                .frame(width: 24)
+                            if case .movie(let movie) = suggestion {
+                                LocalPosterView(movie: movie, cornerRadius: 4)
+                                    .frame(width: 28, height: 40).clipped()
+                            } else {
+                                Image(systemName: suggestion.symbolName)
+                                    .foregroundStyle(Color(red: 0.45, green: 0.16, blue: 0.12))
+                                    .frame(width: 24)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(suggestion.title)
                                     .font(.body.weight(.semibold))
@@ -351,7 +374,7 @@ struct HomeView: View {
 
     private var combinedSearchSuggestions: [UnifiedSearchSuggestion] {
         var seen = Set<String>()
-        let indexedPlaces = model.indexedPlaceSuggestions(query).map(UnifiedSearchSuggestion.place)
+        let indexedPlaces = indexedPlaces.map(UnifiedSearchSuggestion.place)
         let movies = movieSearchResults.map(UnifiedSearchSuggestion.movie)
         let mapPlaces = placeSearch.suggestions.map(UnifiedSearchSuggestion.place)
         return SearchSuggestionOrder.placesFirst(
@@ -439,7 +462,7 @@ struct HomeView: View {
                                 model.toggleFavorite(movie.id)
                             }
                             .onTapGesture {
-                                selectedDrawerIMDb = IMDbSafariDestination(url: movie.imdbURL)
+                                selectedDrawerMovie = movie
                             }
                             Divider().padding(.leading, 84)
                         }
@@ -448,9 +471,8 @@ struct HomeView: View {
                     .padding(.bottom, 20)
                 }
             }
-            .fullScreenCover(item: $selectedDrawerIMDb) { destination in
-                IMDbSafariView(url: destination.url)
-                    .ignoresSafeArea()
+            .fullScreenCover(item: $selectedDrawerMovie) { movie in
+                MovieDetailView(movie: movie).environmentObject(model)
             }
         }
     }
@@ -462,7 +484,7 @@ struct HomeView: View {
         switch suggestion {
         case .movie(let movie):
             drawerState.move(to: .hidden)
-            selectedSearchIMDb = IMDbSafariDestination(url: movie.imdbURL)
+            selectedSearchMovie = movie
         case .place(let place):
             Task {
                 await model.selectSearchSuggestion(place)
@@ -508,36 +530,29 @@ struct HomeView: View {
     }
 
     private func collapseSearch() {
-        movieSearchTask?.cancel()
-        movieSearchTask = nil
-        _ = movieSearchRequestTracker.update("")
+        movieSearch.cancel()
+        placeTask?.cancel()
+        movieMappingTask?.cancel()
+        indexedPlaces = []
         movieSearchResults = []
-        movieSearchIsPending = false
         searchIsFocused = false
         isSearchExpanded = false
     }
 
     private func scheduleMovieSearch(_ value: String) {
-        movieSearchTask?.cancel()
-        guard let requestedQuery = movieSearchRequestTracker.update(value) else {
-            movieSearchTask = nil
-            movieSearchResults = []
-            movieSearchIsPending = false
-            return
+        movieMappingTask?.cancel()
+        movieSearchResults = []
+        let service = model.metadataStore.service
+        movieSearch.update(value) { query in
+            try await service.search(query: query)
         }
-
-        movieSearchIsPending = true
-        movieSearchTask = Task {
-            do {
-                try await Task.sleep(for: .milliseconds(250))
-            } catch {
-                return
-            }
-            let results = await model.movieSuggestions(requestedQuery)
-            guard !Task.isCancelled,
-                  movieSearchRequestTracker.accepts(requestedQuery) else { return }
-            movieSearchResults = results
-            movieSearchIsPending = false
+        placeTask?.cancel()
+        indexedPlaces = []
+        placeTask = Task {
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            let places = await model.indexedPlaceSuggestions(value)
+            guard !Task.isCancelled, query == value else { return }
+            indexedPlaces = places
         }
     }
 
@@ -556,7 +571,7 @@ struct HomeView: View {
 private struct FavoritesView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedIMDb: IMDbSafariDestination?
+    @State private var selectedMovie: MovieViewData?
 
     var body: some View {
         NavigationStack {
@@ -575,7 +590,7 @@ private struct FavoritesView: View {
                                     model.toggleFavorite(movie.id)
                                 }
                                 .onTapGesture {
-                                    selectedIMDb = IMDbSafariDestination(url: movie.imdbURL)
+                                    selectedMovie = movie
                                 }
                                 Divider().padding(.leading, 84)
                             }
@@ -591,27 +606,11 @@ private struct FavoritesView: View {
                     Button("common.done") { dismiss() }
                 }
             }
-            .fullScreenCover(item: $selectedIMDb) { destination in
-                IMDbSafariView(url: destination.url)
-                    .ignoresSafeArea()
+            .fullScreenCover(item: $selectedMovie) { movie in
+                MovieDetailView(movie: movie).environmentObject(model)
             }
         }
     }
-}
-
-private struct IMDbSafariDestination: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-private struct IMDbSafariView: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
-    }
-
-    func updateUIViewController(_ viewController: SFSafariViewController, context: Context) { }
 }
 
 private struct CollapsedResultsDetent: CustomPresentationDetent {
@@ -772,6 +771,7 @@ private struct DynamicReturnKeyTextField: UIViewRepresentable {
         field.font = .preferredFont(forTextStyle: .body)
         field.autocorrectionType = .no
         field.autocapitalizationType = .none
+        field.returnKeyType = .search
         field.clearButtonMode = .whileEditing
         field.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         return field
@@ -779,19 +779,20 @@ private struct DynamicReturnKeyTextField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
-        if field.text != text { field.text = text }
+        // Marked text and cursor are owned by UIKit while the user is composing.
+        if field.markedTextRange == nil, field.text != text {
+            let selection = field.selectedTextRange
+            field.text = text
+            if let selection { field.selectedTextRange = selection }
+        }
         field.placeholder = placeholder
 
-        let desiredReturnKey: UIReturnKeyType = PlaceSearchSubmission.action(for: text) == .dismissKeyboard
-            ? .done
-            : .search
-        if field.returnKeyType != desiredReturnKey {
-            field.returnKeyType = desiredReturnKey
-            if field.isFirstResponder { field.reloadInputViews() }
-        }
-
         if isFocused, !field.isFirstResponder {
-            DispatchQueue.main.async { field.becomeFirstResponder() }
+            let coordinator = context.coordinator
+            DispatchQueue.main.async {
+                guard coordinator.parent.isFocused else { return }
+                field.becomeFirstResponder()
+            }
         } else if !isFocused, field.isFirstResponder {
             field.resignFirstResponder()
         }
