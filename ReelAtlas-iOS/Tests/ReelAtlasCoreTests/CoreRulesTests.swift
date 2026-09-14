@@ -428,4 +428,100 @@ final class CoreRulesTests: XCTestCase {
         )
     }
 
+    func testMovieMetadataCacheExpiresAfterThirtyDays() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var current = Date(timeIntervalSince1970: 1_000)
+        let cache = MovieMetadataCache(root: root, now: { current })
+
+        try cache.writeMetadata(.fixture(id: 550), tmdbID: 550)
+        XCTAssertNotNil(try cache.readMetadata(tmdbID: 550))
+
+        current.addTimeInterval(MovieCachePolicy.maximumAge + 1)
+        XCTAssertNil(try cache.readMetadata(tmdbID: 550))
+    }
+
+    func testMovieMetadataCacheDeletesCorruptEntries() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = MovieMetadataCache(root: root)
+        let metadataURL = root.appendingPathComponent("movie-en-US-550.json")
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: metadataURL)
+
+        XCTAssertNil(try cache.readMetadata(tmdbID: 550))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: metadataURL.path))
+    }
+
+    func testMovieMetadataCacheReadRefreshesAccessDateForLRUEviction() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var current = Date(timeIntervalSince1970: 1_000)
+        let cache = MovieMetadataCache(root: root, maximumBytes: 10, now: { current })
+
+        try cache.writeRaw(Data(repeating: 1, count: 4), key: "old")
+        current.addTimeInterval(1)
+        try cache.writeRaw(Data(repeating: 2, count: 4), key: "recently-read")
+        current.addTimeInterval(1)
+        XCTAssertEqual(cache.rawData(key: "old")?.count, 4)
+        current.addTimeInterval(1)
+        try cache.writeRaw(Data(repeating: 3, count: 4), key: "new")
+
+        XCTAssertEqual(cache.rawData(key: "old")?.count, 4)
+        XCTAssertNil(cache.rawData(key: "recently-read"))
+        XCTAssertEqual(cache.rawData(key: "new")?.count, 4)
+    }
+
+    func testMovieMetadataCacheEvictsLeastRecentlyUsedFilesUntilUnderLimit() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var current = Date(timeIntervalSince1970: 1_000)
+        let cache = MovieMetadataCache(root: root, maximumBytes: 10, now: { current })
+
+        try cache.writeRaw(Data(repeating: 1, count: 6), key: "old")
+        current.addTimeInterval(1)
+        try cache.writeRaw(Data(repeating: 2, count: 6), key: "new")
+
+        XCTAssertNil(cache.rawData(key: "old"))
+        XCTAssertEqual(cache.rawData(key: "new")?.count, 6)
+    }
+
+    func testMovieMetadataCacheImageKeysIncludeTheResolvedPresentationURL() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = MovieMetadataCache(root: root)
+        let compact = try XCTUnwrap(URL(string: "https://image.tmdb.org/t/p/w185/poster.jpg"))
+        let large = try XCTUnwrap(URL(string: "https://image.tmdb.org/t/p/w342/poster.jpg"))
+
+        try cache.writeImage(Data([1]), for: compact)
+        try cache.writeImage(Data([2]), for: large)
+
+        XCTAssertEqual(cache.cachedImage(for: compact), Data([1]))
+        XCTAssertEqual(cache.cachedImage(for: large), Data([2]))
+    }
+
+    func testMovieMetadataCachePolicyMatchesRetentionAndBudget() {
+        XCTAssertEqual(MovieCachePolicy.maximumAge, 2_592_000)
+        XCTAssertEqual(MovieCachePolicy.maximumBytes, 157_286_400)
+    }
+
+    func testMovieMetadataCacheClearRemovesMetadataAndImages() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = MovieMetadataCache(root: root)
+        let imageURL = try XCTUnwrap(URL(string: "https://image.tmdb.org/t/p/w185/poster.jpg"))
+
+        try cache.writeMetadata(.fixture(id: 550), tmdbID: 550)
+        try cache.writeImage(Data([1]), for: imageURL)
+        try cache.clear()
+
+        XCTAssertNil(try cache.readMetadata(tmdbID: 550))
+        XCTAssertNil(cache.cachedImage(for: imageURL))
+    }
+
+    private func temporaryCacheRoot() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    }
+
 }
