@@ -520,6 +520,25 @@ final class CoreRulesTests: XCTestCase {
         XCTAssertNil(cache.cachedImage(for: imageURL))
     }
 
+    func testMovieMetadataCacheAtomicWriteKeepsOpenReaderOnPriorVersion() throws {
+        let root = temporaryCacheRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = MovieMetadataCache(root: root)
+        let first = MovieMetadata.fixture(id: 550)
+        let replacement = MovieMetadata.fixture(id: 550, directors: [.fixture(name: "Replacement")])
+        let metadataURL = root.appendingPathComponent("movie-en-US-550.json")
+
+        try cache.writeMetadata(first, tmdbID: 550)
+        let firstData = try Data(contentsOf: metadataURL)
+        let reader = try FileHandle(forReadingFrom: metadataURL)
+        defer { try? reader.close() }
+
+        try cache.writeMetadata(replacement, tmdbID: 550)
+
+        XCTAssertEqual(try reader.readToEnd(), firstData)
+        XCTAssertEqual(try cache.readMetadata(tmdbID: 550)?.directors.map(\.name), ["Replacement"])
+    }
+
     private func temporaryCacheRoot() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     }
