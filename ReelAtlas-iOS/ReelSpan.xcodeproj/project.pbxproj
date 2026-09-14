@@ -6,6 +6,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A110A110A110A110A110A110 /* MovieMetadataService.swift */; };
+		A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A112A112A112A112A112A112 /* MovieMetadataStore.swift */; };
 		A1C001000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1C001000000000000000002 /* Assets.xcassets */; };
 		AA99AA99AA99AA99AA99AA99 /* HistoricalYearFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */; };
 		AA88AA88AA88AA88AA88AA88 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB88BB88BB88BB88BB88BB88 /* RootView.swift */; };
@@ -61,6 +63,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A110A110A110A110A110A110 /* MovieMetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataService.swift; path = "ReelAtlas/Core/MovieMetadataService.swift"; sourceTree = SOURCE_ROOT; };
+		A112A112A112A112A112A112 /* MovieMetadataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataStore.swift; path = "ReelAtlas/Core/MovieMetadataStore.swift"; sourceTree = SOURCE_ROOT; };
 		A1C001000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = "ReelAtlas/Resources/Assets.xcassets"; sourceTree = SOURCE_ROOT; };
 		BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalYearFormatter.swift; path = "ReelAtlas/Core/HistoricalYearFormatter.swift"; sourceTree = SOURCE_ROOT; };
 		BB88BB88BB88BB88BB88BB88 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = "ReelAtlas/App/RootView.swift"; sourceTree = SOURCE_ROOT; };
@@ -123,6 +127,8 @@
 /* Begin PBXGroup section */
 		2EB2D8158FC6EF9EB19CB439 = {isa = PBXGroup; children = (2568F4DEBB06535449829F17 /* Sources */, 567F2FDE2E8D3E9A09D6C13B /* Resources */, 1E78B559816E575FC0BDB29C /* Products */); sourceTree = "<group>"; };
 		2568F4DEBB06535449829F17 /* Sources */ = {isa = PBXGroup; children = (
+			A110A110A110A110A110A110 /* MovieMetadataService.swift */,
+			A112A112A112A112A112A112 /* MovieMetadataStore.swift */,
 			9EF503381B992287151128BF /* AppModel.swift */,
 			BB88BB88BB88BB88BB88BB88 /* RootView.swift */,
 			BB77BB77BB77BB77BB77BB77 /* AppConfiguration.swift */,
@@ -212,6 +218,8 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		B0193229F5D633567D732C36 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+			A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */,
+			A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */,
 			5FD849EDF8AF183A0AE8AA71 /* AppModel.swift in Sources */,
 			AA88AA88AA88AA88AA88AA88 /* RootView.swift in Sources */,
 			AA77AA77AA77AA77AA77AA77 /* AppConfiguration.swift in Sources */,

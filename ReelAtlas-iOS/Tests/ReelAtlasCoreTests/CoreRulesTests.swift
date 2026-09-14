@@ -1,6 +1,291 @@
 import XCTest
 @testable import ReelAtlasCore
 
+actor StaticHTTPTransport: MovieHTTPTransport {
+    let status: Int
+    let data: Data
+    private(set) var requests: [URLRequest] = []
+
+    init(status: Int, data: Data) {
+        self.status = status
+        self.data = data
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+        return (data, response)
+    }
+}
+
+private struct FailingMovieTransport: MovieHTTPTransport {
+    let code: URLError.Code
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw URLError(code)
+    }
+}
+
+private actor DelayedMovieTransport: MovieHTTPTransport {
+    private(set) var requests: [URLRequest] = []
+    private(set) var cancellations = 0
+    let delay: Duration
+    init(delay: Duration = .milliseconds(150)) { self.delay = delay }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        do { try await Task.sleep(for: delay) }
+        catch { cancellations += 1; throw error }
+        let id = Int(request.url!.lastPathComponent) ?? 550
+        return (try JSONEncoder().encode(MovieMetadata.fixture(id: id)),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+@MainActor
+final class MovieMetadataServiceTests: XCTestCase {
+    private func waitFor(_ predicate: () async -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = ContinuousClock.now + .seconds(3)
+        while !(await predicate()) {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting for observable request state", file: file, line: line)
+                return
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func cache() -> sending MovieMetadataCache {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return MovieMetadataCache(root: root)
+    }
+
+    func testServiceMapsHTTPFailuresWithoutRetryLoop() async {
+        for (status, expected) in [(404, MovieMetadataError.notFound), (429, .rateLimited), (503, .server(503)), (403, .invalidResponse), (200, .decoding)] {
+            let transport = StaticHTTPTransport(status: status, data: Data())
+            let service = MovieMetadataService(transport: transport, cache: cache())
+            do { _ = try await service.metadata(tmdbID: 550); XCTFail("Expected failure") }
+            catch { XCTAssertEqual(error as? MovieMetadataError, expected) }
+            let requests = await transport.requests
+            XCTAssertEqual(requests.count, 1)
+            XCTAssertEqual(requests.first?.timeoutInterval, 12)
+        }
+    }
+
+    func testServiceMapsOfflineTimeoutAndCancellation() async {
+        for (code, expected) in [(URLError.notConnectedToInternet, MovieMetadataError.offline), (.timedOut, .timedOut)] {
+            let service = MovieMetadataService(transport: FailingMovieTransport(code: code), cache: cache())
+            do { _ = try await service.metadata(tmdbID: 550); XCTFail("Expected failure") }
+            catch { XCTAssertEqual(error as? MovieMetadataError, expected) }
+        }
+        let service = MovieMetadataService(transport: FailingMovieTransport(code: .cancelled), cache: cache())
+        do { _ = try await service.metadata(tmdbID: 550); XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testServiceUsesDiskMetadataAndImageCacheBeforeTransport() async throws {
+        let disk = cache()
+        try disk.writeMetadata(.fixture(id: 550), tmdbID: 550)
+        let url = URL(string: "https://image.tmdb.org/t/p/w185/test.jpg")!
+        try disk.writeImage(Data([1, 2]), for: url)
+        let transport = StaticHTTPTransport(status: 503, data: Data())
+        let service = MovieMetadataService(transport: transport, cache: disk)
+        let metadata = try await service.metadata(tmdbID: 550)
+        let image = try await service.imageData(url: url)
+        XCTAssertEqual(metadata.id, 550)
+        XCTAssertEqual(image, Data([1, 2]))
+        let count = await transport.requests.count
+        XCTAssertEqual(count, 0)
+    }
+
+    func testServiceDeduplicatesAndKeepsOtherConsumerAlive() async throws {
+        let transport = DelayedMovieTransport()
+        let service = MovieMetadataService(transport: transport, cache: cache())
+        let first = Task { try await service.metadata(tmdbID: 550) }
+        let second = Task { try await service.metadata(tmdbID: 550) }
+        try await Task.sleep(for: .milliseconds(30))
+        first.cancel()
+        do { _ = try await first.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let result = try await second.value
+        XCTAssertEqual(result.id, 550)
+        let count = await transport.requests.count
+        let cancellations = await transport.cancellations
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(cancellations, 0)
+        _ = try await service.metadata(tmdbID: 550)
+        let cachedCount = await transport.requests.count
+        XCTAssertEqual(cachedCount, 1)
+    }
+
+    func testServiceLastConsumerCancellationReachesTransport() async throws {
+        let transport = DelayedMovieTransport(delay: .seconds(30))
+        let service = MovieMetadataService(transport: transport, cache: cache())
+        let request = Task { try await service.metadata(tmdbID: 550) }
+        try await waitFor { await transport.requests.count == 1 }
+        request.cancel()
+        do { _ = try await request.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        try await waitFor { await transport.cancellations == 1 }
+        let cancellations = await transport.cancellations
+        XCTAssertEqual(cancellations, 1)
+    }
+
+    func testServiceSearchDecodesPageAndUsesFixedWorkerLanguage() async throws {
+        let data = Data(#"{"page":2,"results":[],"totalPages":3,"totalResults":40}"#.utf8)
+        let transport = StaticHTTPTransport(status: 200, data: data)
+        let service = MovieMetadataService(transport: transport, cache: cache())
+        let page = try await service.search(query: " Fight Club ", page: 2)
+        XCTAssertEqual(page.totalPages, 3)
+        let requests = await transport.requests
+        XCTAssertEqual(requests.first?.url?.host, "reelspan-tmdb.xiaoguiwk.workers.dev")
+        let items = URLComponents(url: requests[0].url!, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(items.first { $0.name == "language" }?.value, "en-US")
+        XCTAssertEqual(items.first { $0.name == "query" }?.value, "Fight Club")
+    }
+
+    func testStoreRowDwellAndLastConsumerCancellation() async throws {
+        let transport = DelayedMovieTransport(delay: .seconds(30))
+        let store = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()))
+        store.beginVisible(550)
+        try await Task.sleep(for: .milliseconds(100))
+        let beforeDwell = await transport.requests.count
+        XCTAssertEqual(beforeDwell, 0)
+        store.endVisible(550)
+        try await Task.sleep(for: .milliseconds(1000))
+        let afterDisappear = await transport.requests.count
+        XCTAssertEqual(afterDisappear, 0)
+        XCTAssertEqual(store.metadataState(for: 550), .idle)
+        store.beginDetail(550)
+        store.beginVisible(550)
+        try await waitFor { await transport.requests.count == 1 }
+        store.endDetail(550)
+        let sharedCount = await transport.requests.count
+        XCTAssertEqual(sharedCount, 1)
+        store.endVisible(550)
+        try await waitFor { await transport.cancellations == 1 }
+        let cancellations = await transport.cancellations
+        XCTAssertEqual(cancellations, 1)
+        XCTAssertEqual(store.metadataState(for: 550), .idle)
+    }
+
+    func testDetailCancelsQueuedRowsAndSuspendsNewListStarts() async throws {
+        let transport = DelayedMovieTransport(delay: .milliseconds(400))
+        let store = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()), rowDwell: .zero)
+        store.beginVisible(1)
+        store.beginVisible(2)
+        try await waitFor { await transport.requests.count == 2 }
+        let initial = await transport.requests
+        XCTAssertEqual(Set(initial.map { $0.url!.lastPathComponent }), ["1", "2"])
+        store.beginVisible(3)
+        try await Task.sleep(for: .milliseconds(30))
+        store.beginDetail(4)
+        store.beginVisible(5)
+        try await Task.sleep(for: .milliseconds(500))
+        let duringDetail = await transport.requests
+        XCTAssertEqual(duringDetail.map { $0.url!.lastPathComponent }.sorted(), ["1", "2", "4"])
+        XCTAssertEqual(store.metadataState(for: 4), .loaded(.fixture(id: 4)))
+        store.endDetail(4)
+        try await waitFor { store.metadataState(for: 3).metadata != nil && store.metadataState(for: 5).metadata != nil }
+        XCTAssertEqual(store.metadataState(for: 3), .loaded(.fixture(id: 3)))
+        XCTAssertEqual(store.metadataState(for: 5), .loaded(.fixture(id: 5)))
+        for id in 1...5 { store.endVisible(id) }
+    }
+
+    func testStoreReappearingGenerationPublishesNewRequest() async throws {
+        let transport = DelayedMovieTransport()
+        let store = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()), rowDwell: .zero)
+        store.beginVisible(550)
+        try await Task.sleep(for: .milliseconds(30))
+        store.endVisible(550)
+        store.beginDetail(550)
+        try await waitFor { store.metadataState(for: 550).metadata != nil }
+        XCTAssertEqual(store.metadataState(for: 550), .loaded(.fixture(id: 550)))
+        store.endDetail(550)
+    }
+
+    func testStoreReleaseCancelsOwnedTransportTask() async throws {
+        let transport = DelayedMovieTransport(delay: .seconds(30))
+        var store: MovieMetadataStore? = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()))
+        store?.beginDetail(550)
+        try await waitFor { await transport.requests.count == 1 }
+        store = nil
+        try await waitFor { await transport.cancellations == 1 }
+        let cancellations = await transport.cancellations
+        XCTAssertEqual(cancellations, 1)
+    }
+
+    func testStoreRepeatedVisibleConsumersShareUntilLastDisappears() async throws {
+        let transport = DelayedMovieTransport(delay: .seconds(30))
+        let store = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()), rowDwell: .zero)
+        store.beginVisible(550)
+        store.beginVisible(550)
+        try await waitFor { await transport.requests.count == 1 }
+        store.endVisible(550)
+        try await Task.sleep(for: .milliseconds(40))
+        let count = await transport.requests.count
+        let beforeLast = await transport.cancellations
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(beforeLast, 0)
+        store.endVisible(550)
+        try await waitFor { await transport.cancellations == 1 }
+        let afterLast = await transport.cancellations
+        XCTAssertEqual(afterLast, 1)
+    }
+
+    func testStoreDetailPromotesSameRowBeforeDwellAndPublishesFailure() async throws {
+        let transport = StaticHTTPTransport(status: 429, data: Data())
+        let store = MovieMetadataStore(service: MovieMetadataService(transport: transport, cache: cache()))
+        store.beginVisible(550)
+        store.beginDetail(550)
+        try await waitFor { store.metadataState(for: 550) == .failed(.rateLimited) }
+        XCTAssertEqual(store.metadataState(for: 550), .failed(.rateLimited))
+        let count = await transport.requests.count
+        XCTAssertEqual(count, 1)
+        store.endVisible(550)
+        store.endDetail(550)
+    }
+
+    func testServiceImageDownloadIsPersistedAndSearchCancellationPropagates() async throws {
+        let transport = StaticHTTPTransport(status: 200, data: Data([1, 2, 3]))
+        let service = MovieMetadataService(transport: transport, cache: cache())
+        let url = URL(string: "https://image.tmdb.org/t/p/w185/test.jpg")!
+        let first = try await service.imageData(url: url)
+        let second = try await service.imageData(url: url)
+        XCTAssertEqual(first, Data([1, 2, 3]))
+        XCTAssertEqual(second, first)
+        let count = await transport.requests.count
+        XCTAssertEqual(count, 1)
+
+        let delayed = DelayedMovieTransport(delay: .seconds(30))
+        let searchService = MovieMetadataService(transport: delayed, cache: cache())
+        let task = Task { try await searchService.search(query: "Fight Club") }
+        try await waitFor { await delayed.requests.count == 1 }
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        let cancellations = await delayed.cancellations
+        XCTAssertEqual(cancellations, 1)
+    }
+
+    func testRequestSchedulerCancelsQueuedWorkAndReusesReleasedPermit() async throws {
+        let scheduler = MovieRequestScheduler(maximumListRequests: 1)
+        let first = UUID()
+        try await scheduler.acquireList(id: 1, token: first)
+        let queued = Task { try await scheduler.acquireList(id: 2, token: UUID()) }
+        try await Task.sleep(for: .milliseconds(20))
+        queued.cancel()
+        do { try await queued.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        scheduler.releaseList(token: first)
+        let next = UUID()
+        try await scheduler.acquireList(id: 3, token: next)
+        XCTAssertTrue(scheduler.isRunning(id: 3))
+        XCTAssertFalse(scheduler.isRunning(id: 2))
+        scheduler.releaseList(token: next)
+    }
+}
+
 final class CoreRulesTests: XCTestCase {
     func testPosterAssetURLUsesPublicSupabasePosterPath() {
         XCTAssertEqual(
