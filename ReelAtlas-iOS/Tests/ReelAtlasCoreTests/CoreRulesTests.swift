@@ -138,7 +138,7 @@ final class MovieMetadataServiceTests: XCTestCase {
         let page = try await service.search(query: " Fight Club ", page: 2)
         XCTAssertEqual(page.totalPages, 3)
         let requests = await transport.requests
-        XCTAssertEqual(requests.first?.url?.host, "reelspan-tmdb.xiaoguiwk.workers.dev")
+        XCTAssertEqual(requests.first?.url?.host, "tmdb.xiaoguiwk.top")
         let items = URLComponents(url: requests[0].url!, resolvingAgainstBaseURL: false)!.queryItems!
         XCTAssertEqual(items.first { $0.name == "language" }?.value, "en-US")
         XCTAssertEqual(items.first { $0.name == "query" }?.value, "Fight Club")
@@ -631,7 +631,7 @@ final class CoreRulesTests: XCTestCase {
 
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://reelspan-tmdb.xiaoguiwk.workers.dev/movie/550?language=en-US"
+            "https://tmdb.xiaoguiwk.top/movie/550?language=en-US"
         )
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
     }
@@ -653,7 +653,7 @@ final class CoreRulesTests: XCTestCase {
 
         XCTAssertEqual(
             request.url?.absoluteString,
-            "https://reelspan-tmdb.xiaoguiwk.workers.dev/search/movie?query=Fight%20Club&page=2&language=en-US"
+            "https://tmdb.xiaoguiwk.top/search/movie?query=Fight%20Club&page=2&language=en-US"
         )
     }
 

@@ -38,7 +38,7 @@ No view or view model may construct a TMDB or Worker URL. Image URLs are produce
 
 `MovieMetadataService` is the only owner of the Worker base URL:
 
-`https://reelspan-tmdb.xiaoguiwk.workers.dev`
+`https://tmdb.xiaoguiwk.top`
 
 Supported operations are:
 

@@ -7,6 +7,7 @@ struct HomeView: View {
         case yearPicker
         case settings
         case favorites
+        case tip
     }
 
     @EnvironmentObject private var model: AppModel
@@ -17,6 +18,7 @@ struct HomeView: View {
     @State private var showYearPicker = false
     @State private var showSettings = false
     @State private var showFavorites = false
+    @State private var showTip = false
     @State private var selectedDrawerMovie: MovieViewData?
     @State private var selectedSearchMovie: MovieViewData?
     @StateObject private var placeSearch = AdministrativePlaceSearch()
@@ -115,6 +117,9 @@ struct HomeView: View {
         .sheet(isPresented: $showFavorites, onDismiss: restoreResultsDrawer) {
             FavoritesView().environmentObject(model)
         }
+        .sheet(isPresented: $showTip, onDismiss: restoreResultsDrawer) {
+            TipSheet(manager: model.tipManager)
+        }
         .fullScreenCover(item: $selectedSearchMovie, onDismiss: restoreResultsDrawer) { movie in
             MovieDetailView(movie: movie).environmentObject(model)
         }
@@ -207,6 +212,14 @@ struct HomeView: View {
                 ) {
                     collapseSearch()
                     presentAfterHidingResults(.favorites)
+                }
+
+                roundControlButton(
+                    systemName: "gift.fill",
+                    accessibilityLabel: "Tip ReelSpan"
+                ) {
+                    collapseSearch()
+                    presentAfterHidingResults(.tip)
                 }
             }
             .shadow(radius: 8, y: 3)
@@ -506,6 +519,7 @@ struct HomeView: View {
         case .yearPicker: showYearPicker = true
         case .settings: showSettings = true
         case .favorites: showFavorites = true
+        case .tip: showTip = true
         }
     }
 
@@ -557,7 +571,7 @@ struct HomeView: View {
     }
 
     private func scheduleMapCenterFocus(_ coordinate: CLLocationCoordinate2D) {
-        guard !isSearchExpanded, !showSettings, !showYearPicker, !showFavorites else { return }
+        guard !isSearchExpanded, !showSettings, !showYearPicker, !showFavorites, !showTip else { return }
         mapCenterTask?.cancel()
         mapCenterTask = Task {
             try? await Task.sleep(for: .milliseconds(700))

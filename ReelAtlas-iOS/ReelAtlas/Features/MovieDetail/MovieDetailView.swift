@@ -4,7 +4,6 @@ struct MovieDetailView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     private let originalMovie: MovieViewData
-    @State private var showsTip = false
     private var movie: MovieViewData {
         guard let id = originalMovie.tmdbID,
               let metadata = model.metadataStore.metadataState(for: id).metadata else { return originalMovie }
@@ -111,7 +110,6 @@ struct MovieDetailView: View {
         }
         .onAppear { if let id = originalMovie.tmdbID { model.metadataStore.beginDetail(id) } }
         .onDisappear { if let id = originalMovie.tmdbID { model.metadataStore.endDetail(id) } }
-        .sheet(isPresented: $showsTip) { TipSheet(manager: model.tipManager) }
     }
 
     private var heroAndSummary: some View {
@@ -140,10 +138,6 @@ struct MovieDetailView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(movie.id <= 0)
-
-                Button { showsTip = true } label: { Label("Tip", systemImage: "gift") }
-                    .font(.caption)
-                    .buttonStyle(.borderless)
 
                 Link(destination: movie.imdbURL) {
                     Label("IMDb", systemImage: "arrow.up.right.square")
@@ -256,7 +250,7 @@ private struct CastMemberCard: View {
     }
 }
 
-private struct TipSheet: View {
+struct TipSheet: View {
     @ObservedObject var manager: TipPurchaseManager
     @Environment(\.dismiss) private var dismiss
     @State private var quantity = 1

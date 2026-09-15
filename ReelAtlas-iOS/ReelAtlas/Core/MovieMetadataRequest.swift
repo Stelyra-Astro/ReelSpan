@@ -7,7 +7,7 @@ public enum MovieMetadataRequestError: Error, Equatable, Sendable {
 }
 
 public enum MovieMetadataRequest: Sendable {
-    public static let baseURL = URL(string: "https://reelspan-tmdb.xiaoguiwk.workers.dev")!
+    public static let baseURL = URL(string: "https://tmdb.xiaoguiwk.top")!
 
     case detail(tmdbID: Int)
     case search(query: String, page: Int)
