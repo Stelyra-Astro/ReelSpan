@@ -82,7 +82,7 @@ public final class MovieMetadataCache {
 
     public func trim() throws {
         try withLock {
-            try trimUnlocked()
+            try trimCacheEntries()
         }
     }
 
@@ -117,7 +117,7 @@ public final class MovieMetadataCache {
         try data.write(to: url, options: .atomic)
         try fileManager.setAttributes([.modificationDate: now()], ofItemAtPath: url.path)
         try refreshAccessDate(for: url)
-        try trimUnlocked()
+        try trimCacheEntries()
     }
 
     private func readData(at url: URL) throws -> Data? {
@@ -129,7 +129,7 @@ public final class MovieMetadataCache {
         return try Data(contentsOf: url)
     }
 
-    private func trimUnlocked() throws {
+    private func trimCacheEntries() throws {
         guard fileManager.fileExists(atPath: root.path) else { return }
 
         let keys: Set<URLResourceKey> = [

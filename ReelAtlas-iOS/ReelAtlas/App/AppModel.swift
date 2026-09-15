@@ -6,8 +6,8 @@ import MapKit
 final class AppModel: ObservableObject {
     @Published private(set) var storyTimeSelection = StoryTimeSelection()
     @Published var selectedLocation: LocationRecord?
-    @Published var selectedCoordinate = CLLocationCoordinate2D(latitude: 0, longitude: 0)
-    @Published var displayedPlaceName = ""
+    @Published var selectedCoordinate = InitialLocationFallback.coordinate
+    @Published var displayedPlaceName = InitialLocationFallback.displayName
     @Published var movies: [MovieViewData] = []
     @Published var favoriteIDs = Set<Int>()
     @Published var favoritesOnly = false
@@ -20,6 +20,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLoadingMovies = false
     @Published private(set) var hasMoreMovies = false
     @Published private(set) var movieCacheBytes: Int64 = 0
+    @Published private(set) var initialLocationResolved = false
     @Published var iCloudBackupEnabled: Bool
 
     let metadataStore = MovieMetadataStore()
@@ -40,7 +41,11 @@ final class AppModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
-        interfaceLanguagePreference = UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "system"
+        let savedLanguage = UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "system"
+        interfaceLanguagePreference = InterfaceLanguageResolver.identifier(
+            preference: savedLanguage,
+            systemLanguages: Locale.preferredLanguages
+        )
         iCloudBackupEnabled = UserDefaults.standard.object(forKey: "iCloudBackupEnabled") as? Bool ?? true
         metadataStore.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -67,7 +72,7 @@ final class AppModel: ObservableObject {
             if contentBootstrapGate.markContentReady() {
                 await resolvePendingInitialLocation()
             } else {
-                applyRegionalCapitalFallback()
+                applyCaliforniaFallback()
             }
             if iCloudBackupEnabled { await restoreICloudBackup() }
         } catch {
@@ -93,17 +98,20 @@ final class AppModel: ObservableObject {
     func resolveInitialLocation() async {
         guard !didResolveInitialLocation else { return }
         didResolveInitialLocation = true
-        guard let coordinate = await locationProvider.currentCoordinate() else { return }
-        pendingInitialCoordinate = coordinate
+        pendingInitialCoordinate = await locationProvider.currentCoordinate()
         if contentBootstrapGate.requestInitialSelection() {
             await resolvePendingInitialLocation()
         }
     }
 
     private func resolvePendingInitialLocation() async {
-        guard let coordinate = pendingInitialCoordinate else { return }
+        guard let coordinate = pendingInitialCoordinate else {
+            applyCaliforniaFallback()
+            return
+        }
         pendingInitialCoordinate = nil
         await selectMapCoordinate(coordinate)
+        initialLocationResolved = true
     }
 
     func setStoryStartYear(_ value: Int) {
@@ -184,8 +192,12 @@ final class AppModel: ObservableObject {
         favoriteIDs = restoredIDs
         users?.replaceFavorites(with: restoredIDs)
         if !manifest.interfaceLanguage.isEmpty {
-            interfaceLanguagePreference = manifest.interfaceLanguage
-            UserDefaults.standard.set(manifest.interfaceLanguage, forKey: "interfaceLanguage")
+            let restoredLanguage = InterfaceLanguageResolver.identifier(
+                preference: manifest.interfaceLanguage,
+                systemLanguages: Locale.preferredLanguages
+            )
+            interfaceLanguagePreference = restoredLanguage
+            UserDefaults.standard.set(restoredLanguage, forKey: "interfaceLanguage")
         }
         reload()
     }
@@ -331,21 +343,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyRegionalCapitalFallback() {
-        let regionCode = Locale.current.region?.identifier
-        guard let capital = RegionalCapitalResolver.capital(forRegionCode: regionCode) else {
-            selectedLocation = nil
-            clearMovies()
-            return
-        }
-
-        selectedCoordinate = CLLocationCoordinate2D(latitude: capital.latitude, longitude: capital.longitude)
-        let countryName = regionCode.flatMap { Locale.current.localizedString(forRegionCode: $0) }
+    private func applyCaliforniaFallback() {
+        selectedCoordinate = InitialLocationFallback.coordinate
         selectedLocation = content?.bestLocationMatch(
-            candidateNames: [capital.name, countryName].compactMap { $0 },
+            candidateNames: InitialLocationFallback.candidateNames,
             preferredLanguage: effectiveLanguage
         )
-        displayedPlaceName = selectedLocation?.name ?? capital.name
+        displayedPlaceName = selectedLocation?.name ?? InitialLocationFallback.displayName
+        initialLocationResolved = true
         if selectedLocation != nil { reload() } else { clearMovies() }
     }
 }

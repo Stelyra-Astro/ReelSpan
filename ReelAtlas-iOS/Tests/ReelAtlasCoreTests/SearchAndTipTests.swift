@@ -29,11 +29,9 @@ final class SearchAndTipTests: XCTestCase {
         XCTAssertFalse(search.isPending)
     }
 
-    func testTipQuantitiesAndVerificationStates() {
-        XCTAssertFalse(TipRules.isValidQuantity(0))
-        XCTAssertFalse(TipRules.isValidQuantity(11))
-        XCTAssertTrue(TipRules.isValidQuantity(1))
-        XCTAssertTrue(TipRules.isValidQuantity(10))
+    func testTipProductStates() {
+        XCTAssertEqual(TipRules.productIDs.count, 3)
+        XCTAssertTrue(TipRules.productIDs.allSatisfy(TipRules.isTipProductID))
         XCTAssertEqual(TipState.result(verified: true), .verified)
         XCTAssertEqual(TipState.result(verified: false), .unverified)
         XCTAssertTrue(TipState.purchasing.isBusy)

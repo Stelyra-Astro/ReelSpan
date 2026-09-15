@@ -1,6 +1,6 @@
 # ReelSpan 待办
 
-更新时间：2026-09-15（Build 6 合并版）
+更新时间：2026-09-15（Build 8 合并版）
 
 ## 当前状态
 
@@ -21,7 +21,7 @@
 - [ ] 在 macOS + Xcode 下执行 iPhone Simulator Debug build、Release Archive 和签名验证；当前交付环境没有 Xcode/iOS SDK。
 - [ ] 真机验证冷启动 Supabase 版本检查、离线启动回退、地图定位权限和 MapKit 反查。
 - [ ] 真机快速滚动抽屉，确认 1 秒可见停留策略不会产生过量 Worker/Supabase 请求。
-- [ ] 真机验证 StoreKit `com.reelatlas.tip` 的购买流程。
+- [ ] 真机验证三个 ReelSpan consumable Tip 的购买流程。
 - [ ] 若仍能稳定复现“地图点击坐标偏移”，记录设备、Sheet 档位、点击位置后再修；本次未在没有复现证据的情况下改 MapReader 坐标换算。
 
 ## 运行时数据规范

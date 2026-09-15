@@ -4,7 +4,7 @@
 
 **Goal:** Move all TMDB-provided movie metadata to runtime Worker requests, preserve ReelSpan story data, restore the native detail flow, eliminate search-input blocking, and add StoreKit tips.
 
-**Architecture:** A slim bundled database supplies movie identity and ReelSpan story data while the existing `MovieViewData` remains the UI-facing runtime model. Core `MovieMetadataService`, cache, store, and search-session types own every Worker request and enrich that model without changing existing page interfaces. SwiftUI views observe stable per-movie states, while a separate StoreKit 2 path handles consumable tip quantities.
+**Architecture:** A slim bundled database supplies movie identity and ReelSpan story data while the existing `MovieViewData` remains the UI-facing runtime model. Core `MovieMetadataService`, cache, store, and search-session types own every Worker request and enrich that model without changing existing page interfaces. SwiftUI views observe stable per-movie states, while a separate StoreKit 2 path handles three optional consumable tips.
 
 **Tech Stack:** Swift 6, SwiftUI, Foundation async/await, URLSession, Codable, SQLite, StoreKit 2, XCTest, Python 3 `unittest`, Wikidata Action API.
 
@@ -19,7 +19,7 @@
 - Device cache maximum age is 30 days and aggregate maximum size is 150 MiB.
 - Bundled data retains identity and ReelSpan story/time/location/source/confidence data, but no TMDB-provided metadata or poster files.
 - A known `tmdb_id` is never rematched by title.
-- Tip uses consumable product `com.reelatlas.tip`, quick quantities 1, 3, and 5, and custom quantities 1 through 10.
+- Tip uses three consumable products: `com.xiaoguiwk.ReelSpan.tip.small`, `com.xiaoguiwk.ReelSpan.tip.medium`, and `com.xiaoguiwk.ReelSpan.tip.large`. The UI displays each product's localized `displayPrice`.
 
 ---
 
@@ -675,8 +675,8 @@ git commit -m "feat: restore dynamic native movie details"
 - Modify: `ReelSpan.xcodeproj/project.pbxproj`
 
 **Interfaces:**
-- Produces: `TipSelection.quickQuantities == [1, 3, 5]`, `.validatedQuantity(_:)`, and localized total-price formatting.
-- Produces: `PurchaseManager.tipProduct`, `.loadTipProduct()`, and `.purchaseTip(quantity:)`.
+- Produces: the three Tip Product IDs and localized `displayPrice` presentation.
+- Produces: `TipPurchaseManager.products`, `.load()`, and `.purchase(productID:)`.
 
 - [ ] **Step 1: Add failing quantity-boundary tests**
 
@@ -699,11 +699,15 @@ Expected: compilation fails for missing `TipSelection`.
 - [ ] **Step 3: Implement selection rules and StoreKit purchase states**
 
 ```swift
-static let tipProductID = "com.reelatlas.tip"
+static let tipProductIDs = [
+    "com.xiaoguiwk.ReelSpan.tip.small",
+    "com.xiaoguiwk.ReelSpan.tip.medium",
+    "com.xiaoguiwk.ReelSpan.tip.large"
+]
 
-func purchaseTip(quantity: Int) async {
-    guard let quantity = TipSelection.validatedQuantity(quantity), let tipProduct else { return }
-    let result = try await tipProduct.purchase(options: [.quantity(quantity)])
+func purchaseTip(productID: String) async {
+    guard let tipProduct = products[productID] else { return }
+    let result = try await tipProduct.purchase()
     if case .success(.verified(let transaction)) = result {
         await transaction.finish()
     }
@@ -714,7 +718,7 @@ Do not grant an entitlement. Represent unavailable, purchasing, verified, pendin
 
 - [ ] **Step 4: Build the tip sheet under Favorite with live localized totals**
 
-The sheet shows 1/3/5 buttons, a 1–10 custom stepper/picker, and a purchase confirmation button. Total display multiplies `Product.price` by quantity using the product's locale/currency format. Cancellation closes or resets quietly; other failures show localized inline status.
+The sheet shows one button for each configured Tip product and uses `Product.displayPrice` without hardcoded currency values. Cancellation closes or resets quietly; other failures show localized inline status.
 
 - [ ] **Step 5: Add a local StoreKit configuration for the consumable base product and run build/tests**
 
@@ -722,7 +726,7 @@ Run: `swift test --package-path ReelAtlas-iOS`
 
 Run: `xcodebuild -project ReelAtlas-iOS/ReelSpan.xcodeproj -scheme ReelSpan -sdk iphonesimulator -configuration Debug build CODE_SIGNING_ALLOWED=NO`
 
-Expected: quantity tests pass and the app builds with StoreKit configuration included for local testing.
+Expected: Tip Product ID/state tests pass and the app builds with StoreKit configuration included for local testing.
 
 - [ ] **Step 6: Commit tip support**
 
@@ -772,7 +776,7 @@ Expected: `** BUILD SUCCEEDED **` and exit code 0.
 
 - [ ] **Step 5: Exercise the critical Simulator flows**
 
-Verify rapid typing continues while movie candidates load; old results never replace a newer query; drawer and favorites rows load after dwell; opening detail preempts row work; leaving cancels detail work; cached content reopens offline; missing metadata keeps story cards visible; `posterUrl` wins over fallback; IMDb link opens only when tapped; StoreKit test quantities 1, 3, 5, and 10 complete correctly.
+Verify rapid typing continues while movie candidates load; old results never replace a newer query; drawer and favorites rows load after dwell; opening detail preempts row work; leaving cancels detail work; cached content reopens offline; missing metadata keeps story cards visible; `posterUrl` wins over fallback; IMDb link opens only when tapped; each StoreKit Tip product completes correctly without creating an entitlement.
 
 - [ ] **Step 6: Write the migration report and update documentation**
 

@@ -6,9 +6,27 @@
       "displayPrice" : "0.99",
       "familyShareable" : false,
       "internalID" : "E2039252",
-      "localizations" : [{ "description" : "A voluntary tip supporting ReelSpan.", "displayName" : "Support ReelSpan", "locale" : "en_US" }],
-      "productID" : "com.reelatlas.tip",
-      "referenceName" : "ReelSpan Tip",
+      "localizations" : [{ "description" : "A voluntary small tip supporting ReelSpan.", "displayName" : "Small Tip", "locale" : "en_US" }],
+      "productID" : "com.xiaoguiwk.ReelSpan.tip.small",
+      "referenceName" : "ReelSpan Small Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "E2039253",
+      "localizations" : [{ "description" : "A voluntary medium tip supporting ReelSpan.", "displayName" : "Medium Tip", "locale" : "en_US" }],
+      "productID" : "com.xiaoguiwk.ReelSpan.tip.medium",
+      "referenceName" : "ReelSpan Medium Tip",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "E2039254",
+      "localizations" : [{ "description" : "A voluntary large tip supporting ReelSpan.", "displayName" : "Large Tip", "locale" : "en_US" }],
+      "productID" : "com.xiaoguiwk.ReelSpan.tip.large",
+      "referenceName" : "ReelSpan Large Tip",
       "type" : "Consumable"
     }
   ],

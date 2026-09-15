@@ -1,6 +1,6 @@
 # ReelSpan iOS MVP
 
-Native SwiftUI/MapKit movie-discovery app implementing the agreed MVP: select a place and story year, then discover movies whose narrative locations and story-time ranges match. The app is account-free, uses a local movie database, stores favorites locally, and is designed for a one-time App Store purchase.
+Native SwiftUI/MapKit movie-discovery app implementing the agreed MVP: select a place and story year, then discover movies whose narrative locations and story-time ranges match. ReelSpan does not require an account, stores favorites and local settings on the device, and is free to use. Optional tips are consumable Apple StoreKit purchases and do not unlock features.
 
 ## Open in Xcode
 1. Open `ReelSpan.xcodeproj`.
@@ -24,12 +24,14 @@ The generation environment does not contain Xcode/MapKit, so the final native ta
 - Feature-length documentaries remain in the movie dataset.
 - No TV series and no books in MVP.
 
-## Purchase model
-`PurchaseManager.productID` is currently:
+## Tip model
+ReelSpan offers three optional consumable tips:
 
-`com.reelatlas.fullaccess`
+- `com.xiaoguiwk.ReelSpan.tip.small`
+- `com.xiaoguiwk.ReelSpan.tip.medium`
+- `com.xiaoguiwk.ReelSpan.tip.large`
 
-The Release build checks a StoreKit 2 non-consumable entitlement before allowing access. Debug builds bypass the gate so the project can be tested before App Store Connect is configured. Restore Purchase is included in both the paywall and Settings.
+The app displays Apple's localized `Product.displayPrice`. A verified transaction is finished immediately. Tips do not unlock features, create entitlements, grant credits, create subscriptions, require an account, or use a server-side verification flow.
 
 ## Supabase content and local cache
 The project separates server-owned story content from runtime user data.

@@ -27,16 +27,8 @@ private struct SettingsContent: View {
     @Binding var legalPage: LegalPage?
 
     private let interfaceLanguages: [(String, String)] = [
-        ("system", "settings.system_default"),
         ("en", "settings.language.english"),
-        ("zh-Hans", "settings.language.simplified_chinese"),
-        ("ja", "settings.language.japanese"),
-        ("fr", "settings.language.french"),
-        ("de", "settings.language.german"),
-        ("es", "settings.language.spanish"),
-        ("it", "settings.language.italian"),
-        ("pt", "settings.language.portuguese"),
-        ("ko", "settings.language.korean")
+        ("zh-Hans", "settings.language.simplified_chinese")
     ]
 
     var body: some View {
@@ -88,31 +80,41 @@ private struct SettingsContent: View {
                 pageRow(.terms)
             }
 
+            Section("settings.section.sources") {
+                pageRow(.sources)
+                pageRow(.tmdb)
+            }
+
             Section("settings.section.support") {
                 pageRow(.help)
                 pageRow(.about)
-                LabeledContent(L10n.text("settings.app_version"), value: appVersion)
             }
         }
     }
 
+    @ViewBuilder
     private func pageRow(_ page: LegalPage) -> some View {
-        Link(destination: page.externalURL) {
-            HStack {
-                Text(page.title).foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+        if page.isLocal {
+            Button { legalPage = page } label: {
+                rowLabel(page)
             }
+            .buttonStyle(.plain)
+        } else {
+            Link(destination: page.externalURL) {
+                rowLabel(page)
+            }
+        }
+    }
+
+    private func rowLabel(_ page: LegalPage) -> some View {
+        HStack {
+            Text(page.title).foregroundStyle(.primary)
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
         }
     }
 
     private var cacheSizeText: String {
         ByteCountFormatter.string(fromByteCount: model.movieCacheBytes, countStyle: .file)
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
-        return "\(version) (\(build))"
     }
 }

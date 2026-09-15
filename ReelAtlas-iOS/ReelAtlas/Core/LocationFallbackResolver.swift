@@ -1,4 +1,18 @@
 import Foundation
+import CoreLocation
+
+/// Search must not inherit the device's current regional bias. MapKit still ranks
+/// results, but a world-sized region lets place queries resolve outside China.
+public enum AdministrativePlaceSearchPolicy {
+    public static let regionCenterLatitude = 0.0
+    public static let regionCenterLongitude = 0.0
+    public static let latitudeDelta = 180.0
+    public static let longitudeDelta = 360.0
+
+    public static var regionCenter: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: regionCenterLatitude, longitude: regionCenterLongitude)
+    }
+}
 
 public struct LocationFallbackResolver: Sendable {
     private let parentByID: [String: String]

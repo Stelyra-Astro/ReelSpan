@@ -1,4 +1,11 @@
 import Foundation
+import CoreLocation
+
+enum InitialLocationFallback {
+    static let displayName = "California"
+    static let coordinate = CLLocationCoordinate2D(latitude: 36.7783, longitude: -119.4179)
+    static let candidateNames = ["California", "United States", "USA"]
+}
 
 struct ContentBootstrapScope: Equatable, Sendable {
     let movieQIDs: [String]
@@ -99,6 +106,7 @@ enum ReelSpanLinks {
     static let website = URL(string: "https://stelyra-astro.github.io/ReelSpan/")!
     static let privacy = URL(string: "https://stelyra-astro.github.io/ReelSpan/privacy/")!
     static let terms = URL(string: "https://stelyra-astro.github.io/ReelSpan/terms/")!
+    static let tmdbAttribution = URL(string: "https://stelyra-astro.github.io/ReelSpan/tmdb/")!
     static let supportEmail = "Stelyra-Astro@proton.me"
     static let supportEmailURL = URL(string: "mailto:\(supportEmail)")!
 }

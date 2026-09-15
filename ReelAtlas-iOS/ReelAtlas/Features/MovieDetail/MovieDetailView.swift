@@ -253,55 +253,60 @@ private struct CastMemberCard: View {
 struct TipSheet: View {
     @ObservedObject var manager: TipPurchaseManager
     @Environment(\.dismiss) private var dismiss
-    @State private var quantity = 1
-    @State private var custom = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Support ReelSpan with a voluntary tip. Tips do not unlock any features.")
+                    Text("tip.description")
                     if manager.state == .loading { ProgressView() }
-                    if manager.product != nil {
-                        HStack {
-                            ForEach([1, 3, 5], id: \.self) { value in
-                                Button(manager.amount(quantity: value)) { quantity = value; custom = false }
-                                    .buttonStyle(.bordered)
-                                    .tint(!custom && quantity == value ? .accentColor : .secondary)
+                    ForEach(TipRules.productIDs, id: \.self) { productID in
+                        if let product = manager.product(for: productID) {
+                            Button {
+                                Task { await manager.purchase(productID: productID) }
+                            } label: {
+                                HStack {
+                                    Text(tipName(for: productID))
+                                    Spacer()
+                                    Text(product.displayPrice)
+                                        .fontWeight(.semibold)
+                                }
                             }
+                            .disabled(manager.state.isBusy || manager.state == .pending)
                         }
-                        Toggle("Custom amount", isOn: $custom)
-                        if custom {
-                            Stepper("\(quantity) × \(manager.amount(quantity: 1))", value: $quantity, in: 1...10)
-                        }
-                        Button("Send \(manager.amount(quantity: quantity)) tip") {
-                            Task { await manager.purchase(quantity: quantity) }
-                        }
-                        .disabled(manager.state.isBusy || manager.state == .pending)
                     }
                     Text(statusText).font(.caption).foregroundStyle(.secondary)
-                    if manager.product == nil && !manager.state.isBusy {
-                        Button("Try again") { Task { await manager.load() } }
+                    if manager.products.isEmpty && !manager.state.isBusy {
+                        Button("tip.try_again") { Task { await manager.load() } }
                     }
                 }
             }
-            .navigationTitle("Tip ReelSpan")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .navigationTitle("tip.title")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("common.done") { dismiss() } } }
         }
         .task { await manager.load() }
         .interactiveDismissDisabled(manager.state == .purchasing)
     }
 
+    private func tipName(for productID: String) -> String {
+        switch productID {
+        case "com.xiaoguiwk.ReelSpan.tip.small": return L10n.text("tip.small")
+        case "com.xiaoguiwk.ReelSpan.tip.medium": return L10n.text("tip.medium")
+        case "com.xiaoguiwk.ReelSpan.tip.large": return L10n.text("tip.large")
+        default: return L10n.text("tip.support")
+        }
+    }
+
     private var statusText: String {
         switch manager.state {
-        case .unavailable: "Tips are currently unavailable in the App Store."
-        case .loading: "Loading App Store prices…"
-        case .ready: "Payment is handled by Apple."
-        case .purchasing: "Waiting for Apple…"
-        case .verified: "Thank you for supporting ReelSpan!"
-        case .pending: "Your tip is awaiting approval."
-        case .cancelled: "Payment was cancelled."
-        case .unverified: "The App Store payment could not be verified."
+        case .unavailable: L10n.text("tip.unavailable")
+        case .loading: L10n.text("tip.loading")
+        case .ready: L10n.text("tip.payment_apple")
+        case .purchasing: L10n.text("tip.waiting")
+        case .verified: L10n.text("tip.thanks")
+        case .pending: L10n.text("tip.pending")
+        case .cancelled: L10n.text("tip.cancelled")
+        case .unverified: L10n.text("tip.unverified")
         case .failed(let message): message
         }
     }

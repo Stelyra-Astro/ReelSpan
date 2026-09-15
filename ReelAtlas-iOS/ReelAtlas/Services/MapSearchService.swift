@@ -39,6 +39,7 @@ final class AdministrativePlaceSearch: NSObject, ObservableObject, MKLocalSearch
         super.init()
         completer.delegate = self
         completer.resultTypes = [.address]
+        completer.region = MapSearchService.globalSearchRegion
         if #available(iOS 18.0, *) {
             completer.addressFilter = MKAddressFilter(including: [
                 .country,
@@ -112,6 +113,14 @@ struct MapSearchSelection {
 }
 
 enum MapSearchService {
+    static let globalSearchRegion = MKCoordinateRegion(
+        center: AdministrativePlaceSearchPolicy.regionCenter,
+        span: MKCoordinateSpan(
+            latitudeDelta: AdministrativePlaceSearchPolicy.latitudeDelta,
+            longitudeDelta: AdministrativePlaceSearchPolicy.longitudeDelta
+        )
+    )
+
     static func resolve(_ suggestion: MapSearchSuggestion) async throws -> MapSearchSelection {
         if let selection = suggestion.selection { return selection }
         guard let completion = suggestion.completion else {
@@ -162,10 +171,7 @@ enum MapSearchService {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
         request.resultTypes = [.address]
-        request.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
-            span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
-        )
+        request.region = globalSearchRegion
         if #available(iOS 18.0, *) {
             request.addressFilter = MKAddressFilter(including: [
                 .country,

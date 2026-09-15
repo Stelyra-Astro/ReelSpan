@@ -2,6 +2,44 @@ import XCTest
 @testable import ReelAtlasCore
 
 final class CoreRulesTests: XCTestCase {
+    func testInitialLocationFallbackUsesCalifornia() {
+        XCTAssertEqual(InitialLocationFallback.displayName, "California")
+        XCTAssertEqual(InitialLocationFallback.coordinate.latitude, 36.7783, accuracy: 0.0001)
+        XCTAssertEqual(InitialLocationFallback.coordinate.longitude, -119.4179, accuracy: 0.0001)
+    }
+
+    func testAdministrativePlaceSearchUsesADeviceIndependentGlobalRegion() {
+        XCTAssertEqual(AdministrativePlaceSearchPolicy.regionCenterLatitude, 0, accuracy: 0.0001)
+        XCTAssertEqual(AdministrativePlaceSearchPolicy.regionCenterLongitude, 0, accuracy: 0.0001)
+        XCTAssertEqual(AdministrativePlaceSearchPolicy.latitudeDelta, 180, accuracy: 0.0001)
+        XCTAssertEqual(AdministrativePlaceSearchPolicy.longitudeDelta, 360, accuracy: 0.0001)
+    }
+
+    func testSupportedInterfaceLanguagesAreEnglishAndSimplifiedChinese() {
+        XCTAssertEqual(InterfaceLanguageResolver.supportedIdentifiers, ["en", "zh-Hans"])
+        XCTAssertEqual(
+            InterfaceLanguageResolver.identifier(preference: "system", systemLanguages: ["zh-CN"]),
+            "zh-Hans"
+        )
+        XCTAssertEqual(
+            InterfaceLanguageResolver.identifier(preference: "ja", systemLanguages: ["ja-JP"]),
+            "en"
+        )
+    }
+
+    func testTipProductIDsContainOnlyTheThreeConsumables() {
+        XCTAssertEqual(
+            TipRules.productIDs,
+            [
+                "com.xiaoguiwk.ReelSpan.tip.small",
+                "com.xiaoguiwk.ReelSpan.tip.medium",
+                "com.xiaoguiwk.ReelSpan.tip.large"
+            ]
+        )
+        XCTAssertTrue(TipRules.isTipProductID("com.xiaoguiwk.ReelSpan.tip.small"))
+        XCTAssertFalse(TipRules.isTipProductID("com.example.legacy.tip"))
+    }
+
     func testContentBootstrapDefersInitialSelectionUntilContentIsReady() {
         var gate = ContentBootstrapGate()
 
@@ -267,7 +305,7 @@ final class CoreRulesTests: XCTestCase {
         )
         XCTAssertEqual(
             InterfaceLanguageResolver.identifier(preference: "system", systemLanguages: ["fr-FR"]),
-            "fr"
+            "en"
         )
     }
 

@@ -1,4 +1,4 @@
-# Reel Atlas MVP Design
+# ReelSpan MVP Design
 
 ## Product
 A native iOS movie-discovery app using Apple Maps as the spatial interface. Users choose a place and story year to discover feature films and feature-length documentaries whose narrative locations match the place (with administrative fallback) and whose one or more story time ranges contain the selected year.
@@ -6,8 +6,8 @@ A native iOS movie-discovery app using Apple Maps as the spatial interface. User
 ## Platform and commercial model
 - SwiftUI + MapKit, iOS 17+.
 - No account.
-- One-time purchase / restore through StoreKit 2; product id `com.reelatlas.fullaccess` is configurable.
-- Core content and user data are local on device. MapKit remains an Apple online service.
+- Free to use. Optional consumable tips are processed by Apple through StoreKit 2 and do not unlock features or create entitlements.
+- Story data and user settings are cached locally on device; movie metadata and images are delivered through ReelSpan-operated infrastructure. MapKit remains an Apple online service.
 
 ## Data
 - Wikidata-aligned core: QID, `P840` narrative locations, `P2408` set-in-period raw provenance, normalized independent story time ranges, location ancestors, TMDB ID.

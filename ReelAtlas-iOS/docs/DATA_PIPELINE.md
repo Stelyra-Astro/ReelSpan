@@ -1,4 +1,4 @@
-# Reel Atlas CSV import contract
+# ReelSpan CSV import contract
 
 ## Authoritative input
 

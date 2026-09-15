@@ -103,9 +103,9 @@ The detail page includes an explicit IMDb link. The favorite control remains in 
 
 ## Tip purchases
 
-StoreKit 2 uses one repeatable consumable base product with product ID `com.reelatlas.tip`. App Store Connect defines its localized base price. The sheet loads the live `Product` and displays total localized prices for quick quantities 1, 3, and 5 plus a custom integer quantity from 1 through 10, which is StoreKit's supported maximum.
+StoreKit 2 uses three consumable products: `com.xiaoguiwk.ReelSpan.tip.small`, `com.xiaoguiwk.ReelSpan.tip.medium`, and `com.xiaoguiwk.ReelSpan.tip.large`. App Store Connect defines their localized prices. The sheet loads the live `Product` values and displays each product's `displayPrice`; verified transactions are finished without creating an entitlement.
 
-Purchasing calls `product.purchase(options: [.quantity(quantity)])`. Verified transactions are finished; pending, cancellation, unverified transactions, parental/payment restrictions, unavailable products, and StoreKit errors receive distinct non-destructive states. A tip grants no entitlement and does not alter the existing full-access product. The Tip control is hidden or disabled with an explanatory state when purchases are unavailable. The App Store Connect product configuration and StoreKit test configuration are delivery prerequisites outside source code.
+Purchasing calls `product.purchase()`. Verified transactions are finished; pending, cancellation, unverified transactions, parental/payment restrictions, unavailable products, and StoreKit errors receive distinct non-destructive states. A tip grants no entitlement and does not alter app access. The Tip control is hidden or disabled with an explanatory state when purchases are unavailable. The App Store Connect product configuration and StoreKit test configuration are delivery prerequisites outside source code.
 
 ## Failure behavior
 
@@ -128,7 +128,7 @@ Testing follows red-green-refactor cycles and covers:
 - rapid search typing, latest-response wins, and preserved input focus/cursor behavior;
 - local story data remaining usable with missing metadata, missing TMDB ID, and every required failure class;
 - multi-director and cast presentation, IMDb link behavior, and placeholder image behavior;
-- StoreKit product loading, quantity selection, verified completion, pending, cancellation, and unverified results;
+- StoreKit product loading, verified completion, pending, cancellation, and unverified results for all three Tip products;
 - importer/schema tests proving prohibited TMDB metadata is absent from the generated app database;
 - a database audit reporting total movies, TMDB IDs added from Wikidata, and unresolved IDs;
 - full Swift package tests and an unsigned iOS Simulator build.

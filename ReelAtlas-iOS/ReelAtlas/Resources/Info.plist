@@ -12,7 +12,7 @@
 <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
 <key>ITSAppUsesNonExemptEncryption</key><false/>
 <key>LSRequiresIPhoneOS</key><true/>
-<key>NSLocationWhenInUseUsageDescription</key><string>ReelSpan uses your location to show movies connected to the area around you.</string>
+<key>NSLocationWhenInUseUsageDescription</key><string>ReelSpan uses your location to center the map and help you explore films by place. Your location is not stored by ReelSpan.</string>
 <key>NSUbiquitousContainers</key><dict>
 <key>iCloud.com.xiaoguiwk.ReelSpan</key><dict>
 <key>NSUbiquitousContainerIsDocumentScopePublic</key><false/>

@@ -96,6 +96,12 @@ struct HomeView: View {
             await model.resolveInitialLocation()
             updateCamera()
         }
+        .onChange(of: model.selectedCoordinate.latitude) { _, _ in
+            updateCamera()
+        }
+        .onChange(of: model.selectedCoordinate.longitude) { _, _ in
+            updateCamera()
+        }
         .sheet(isPresented: resultsSheetIsPresented, onDismiss: resultsSheetDidDismiss) {
             movieSheet
                 .presentationDetents([tipDetent, defaultResultsDetent, .large], selection: selectedResultsDetent)

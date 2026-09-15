@@ -47,8 +47,15 @@ public final class LatestMovieSearch {
 }
 
 public enum TipRules {
-    public static let productID = "com.reelatlas.tip"
-    public static func isValidQuantity(_ value: Int) -> Bool { (1...10).contains(value) }
+    public static let productIDs = [
+        "com.xiaoguiwk.ReelSpan.tip.small",
+        "com.xiaoguiwk.ReelSpan.tip.medium",
+        "com.xiaoguiwk.ReelSpan.tip.large"
+    ]
+
+    public static func isTipProductID(_ productID: String) -> Bool {
+        productIDs.contains(productID)
+    }
 }
 
 public enum MoviePaginationPolicy {

@@ -1,8 +1,10 @@
-# ReelSpan Build 6 Delivery Notes
+# ReelSpan Build 8 Delivery Notes
 
 ## 本次合并
 
 Build 6 合并了 `codex/supabase-content-sync` 和 `codex/dynamic-metadata` 两条开发线。故事内容继续由 Supabase 管理并在冷启动同步为本地离线 SQLite；电影标题、简介、类型、导演、演员、评分与 poster 使用独立的动态元数据链路。
+
+Build 8 修复了 MapKit 地点自动补全继承设备区域偏置的问题，地点搜索使用全球区域；设备电影缓存链路本次保持不变。
 
 ## 电影数据链路
 
@@ -49,28 +51,26 @@ Build 6 合并了 `codex/supabase-content-sync` 和 `codex/dynamic-metadata` 两
 ## Build
 
 - Marketing Version: `1.0`
-- Build: `6`
+- Build: `8`
 - Minimum iOS: `17.0`
 - Bundle ID: `com.xiaoguiwk.ReelSpan`
 
 ## 本环境已验证
 
-- `swift test`: 53 tests, 0 failures。
+- `swift test`: 57 tests, 0 failures。
 - `python -m unittest discover -s Tests/ProjectMergeTests -v`: project merge/source checks pass。
-- 全部 `ReelAtlas/**/*.swift` 使用 `swiftc -parse`：通过。
-- `plutil -lint ReelSpan.xcodeproj/project.pbxproj`: OK。
+- Xcode Debug Simulator build：通过。
+- 12 mini Simulator 安装并启动：通过；截图检查受 CoreSimulator 服务短暂断开影响。
 - Xcode project 中动态 metadata 源文件各只进入 Sources 一次，已删除文件不再进入 target。
 
 ## 仍需在 Mac/Xcode 验证
 
-当前执行环境没有 Xcode / iOS SDK，因此不能在这里声称 iOS target 已完成真实编译或 Archive。拿到项目后请运行：
+Release Archive / TestFlight 上传使用：
 
 ```bash
-xcodebuild -project ReelSpan.xcodeproj \
-  -scheme ReelSpan \
-  -sdk iphonesimulator \
-  -configuration Debug \
-  build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project ReelSpan.xcodeproj -scheme ReelSpan \
+  -configuration Release -destination generic/platform=iOS \
+  -archivePath /private/tmp/reelspan-build8-archive/ReelSpan.xcarchive archive
 ```
 
-随后再做 Release Archive / 真机签名检查。
+Build 8 的 Archive 和上传完成后，再补充处理状态。

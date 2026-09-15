@@ -4,125 +4,91 @@ import StoreKit
 
 @MainActor
 final class TipPurchaseManager: ObservableObject {
-    @Published private(set) var product: Product?
+    @Published private(set) var products: [String: Product] = [:]
     @Published private(set) var state: TipState = .unavailable
-    private var updates: Task<Void, Never>?
+    private var transactionTasks: [Task<Void, Never>] = []
 
     init() {
-        updates = Task { [weak self] in
-            for await result in Transaction.updates {
-                guard !Task.isCancelled else { return }
-                guard case .verified(let transaction) = result,
-                      transaction.productID == TipRules.productID else { continue }
-                await transaction.finish()
-                self?.state = .verified
-            }
-        }
+        transactionTasks = [
+            Task { [weak self] in await self?.observeUpdates() },
+            Task { [weak self] in await self?.observeUnfinishedTransactions() }
+        ]
     }
-    deinit { updates?.cancel() }
+
+    deinit { transactionTasks.forEach { $0.cancel() } }
 
     func load() async {
         guard !state.isBusy else { return }
         state = .loading
         do {
-            product = try await Product.products(for: [TipRules.productID]).first { $0.type == .consumable }
-            state = product == nil ? .unavailable : .ready
-        } catch { state = .failed(error.localizedDescription) }
+            let loadedProducts = try await Product.products(for: TipRules.productIDs)
+                .filter { $0.type == .consumable && TipRules.isTipProductID($0.id) }
+            products = Dictionary(uniqueKeysWithValues: loadedProducts.map { ($0.id, $0) })
+            state = products.isEmpty ? .unavailable : .ready
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
     }
 
-    func amount(quantity: Int) -> String {
-        guard let product, TipRules.isValidQuantity(quantity) else { return "—" }
-        return (product.price * Decimal(quantity)).formatted(product.priceFormatStyle)
+    func product(for productID: String) -> Product? {
+        products[productID]
     }
 
-    func purchase(quantity: Int) async {
-        guard TipRules.isValidQuantity(quantity), !state.isBusy else { return }
-        guard let product else { state = .unavailable; return }
+    func purchase(productID: String) async {
+        guard TipRules.isTipProductID(productID), !state.isBusy else { return }
+        guard let product = products[productID] else {
+            state = .unavailable
+            return
+        }
         state = .purchasing
         do {
-            switch try await product.purchase(options: [.quantity(quantity)]) {
+            switch try await product.purchase() {
             case .success(let verification):
                 switch verification {
                 case .verified(let transaction):
-                    guard transaction.productID == TipRules.productID else { state = .unverified; return }
-                    await transaction.finish()
-                    state = TipState.result(verified: true)
+                    await finishIfTip(transaction)
                 case .unverified:
-                    state = TipState.result(verified: false)
-                }
-            case .pending: state = .pending
-            case .userCancelled: state = .cancelled
-            @unknown default: state = .failed("The App Store returned an unknown result.")
-            }
-        } catch { state = .failed(error.localizedDescription) }
-    }
-}
-
-@MainActor
-final class PurchaseManager: ObservableObject {
-    static let productID = "com.reelatlas.fullaccess"
-
-    @Published var product: Product?
-    @Published var isUnlocked = false
-    @Published var statusMessage = ""
-    @Published var hasLoaded = false
-
-    func load() async {
-        do {
-            product = try await Product.products(for: [Self.productID]).first
-            if product == nil { statusMessage = L10n.text("purchase.product_not_configured") }
-        } catch {
-            statusMessage = L10n.text("purchase.product_not_configured")
-        }
-        await refreshEntitlement()
-        hasLoaded = true
-    }
-
-    func purchase() async {
-        guard let product else {
-            statusMessage = L10n.text("purchase.configure_product")
-            return
-        }
-        do {
-            let result = try await product.purchase()
-            switch result {
-            case .success(let verification):
-                if case .verified(let transaction) = verification {
-                    await transaction.finish()
-                    isUnlocked = true
-                    statusMessage = L10n.text("purchase.unlocked")
+                    state = .unverified
                 }
             case .pending:
-                statusMessage = L10n.text("purchase.pending")
+                state = .pending
             case .userCancelled:
-                statusMessage = L10n.text("purchase.cancelled")
+                state = .cancelled
             @unknown default:
-                break
+                state = .failed("The App Store returned an unknown result.")
             }
         } catch {
-            statusMessage = error.localizedDescription
+            state = .failed(error.localizedDescription)
         }
     }
 
-    func restore() async {
-        do {
-            try await AppStore.sync()
-            await refreshEntitlement()
-            statusMessage = isUnlocked ? L10n.text("purchase.restored") : L10n.text("purchase.not_found")
-        } catch {
-            statusMessage = error.localizedDescription
+    private func observeUpdates() async {
+        for await result in Transaction.updates {
+            guard !Task.isCancelled else { return }
+            await handle(result)
         }
     }
 
-    func refreshEntitlement() async {
-        var unlocked = false
-        for await result in Transaction.currentEntitlements {
-            if case .verified(let transaction) = result,
-               transaction.productID == Self.productID,
-               transaction.revocationDate == nil {
-                unlocked = true
-            }
+    private func observeUnfinishedTransactions() async {
+        for await result in Transaction.unfinished {
+            guard !Task.isCancelled else { return }
+            await handle(result)
         }
-        isUnlocked = unlocked
+    }
+
+    private func handle(_ result: VerificationResult<Transaction>) async {
+        switch result {
+        case .verified(let transaction):
+            await finishIfTip(transaction)
+        case .unverified(let transaction, _):
+            guard TipRules.isTipProductID(transaction.productID) else { return }
+            state = .unverified
+        }
+    }
+
+    private func finishIfTip(_ transaction: Transaction) async {
+        guard TipRules.isTipProductID(transaction.productID) else { return }
+        await transaction.finish()
+        state = .verified
     }
 }

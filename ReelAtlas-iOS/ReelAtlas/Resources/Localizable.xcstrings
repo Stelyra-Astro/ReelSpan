@@ -932,13 +932,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan\nExplore movies through place and time.\n\nNo account · One-time purchase · Local movie database · Apple Maps spatial interface."
+            "value": "ReelSpan\nExplore films through place and time.\n\nVersion %@\nBuild %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan\n通过地点与时间发现电影。\n\n免登录 · 一次买断 · 本地电影数据库 · Apple 地图空间界面。"
+            "value": "ReelSpan\n通过地点与时间探索电影。\n\n版本 %@\n构建 %@"
           }
         }
       }
@@ -1028,13 +1028,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan is designed without an account. Movie browsing, story-time filtering, location matching and favorites are processed locally on the device.\n\nLocation\nThe MVP does not require continuous location access. Place search and map interactions use Apple Maps. The app does not keep a history of precise locations by default.\n\nLocal data\nFavorites, preferences and downloaded image files remain on this device. Removing the app removes these local files unless iOS restores them from a device backup.\n\nApple services\nApple Maps and App Store purchases are Apple services and are governed by Apple's policies.\n\nAnalytics\nThe MVP does not include a third-party behavioral analytics SDK."
+            "value": "ReelSpan does not require a user account. Favorites, interface preferences, and other local app settings are stored on the user's device.\n\nMovie metadata and images are retrieved through ReelSpan-operated infrastructure using Cloudflare, Supabase, and The Movie Database (TMDB).\n\nIf location permission is granted, ReelSpan may use the user's current location to center the map. ReelSpan does not intentionally store precise location history.\n\nOptional tips are processed by Apple through StoreKit. ReelSpan does not receive or store payment card information.\n\nReelSpan does not use advertising SDKs or cross-app tracking."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan 无需注册账户。电影浏览、故事时间筛选、地点匹配和收藏均在设备本地处理。\n\n地点\nMVP 不需要持续获取位置权限。地点搜索和地图交互使用 Apple 地图。默认不保存精确地点历史。\n\n本地数据\n收藏、偏好和下载的图片文件保存在本机。删除 App 会删除这些本地文件，除非 iOS 从设备备份中恢复。\n\nApple 服务\nApple 地图和 App Store 购买属于 Apple 服务，并受 Apple 自身政策约束。\n\n分析\nMVP 不包含第三方行为分析 SDK。"
+            "value": "ReelSpan 不要求用户注册账号。收藏、界面偏好和其他本地应用设置保存在用户设备上。\n\n电影元数据和图片通过 ReelSpan 运营的基础设施获取，使用 Cloudflare、Supabase 和 The Movie Database（TMDB）。\n\n如果授予位置权限，ReelSpan 可能使用用户当前位置将地图居中。ReelSpan 不会有意保存精确位置历史。\n\n可选打赏由 Apple 通过 StoreKit 处理。ReelSpan 不接收或存储银行卡信息。\n\nReelSpan 不使用广告 SDK，也不进行跨应用跟踪。"
           }
         }
       }
@@ -1060,13 +1060,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wikidata\nThe core knowledge graph aligns movie identities, narrative locations (P840), set-in-period statements (P2408), location hierarchy and cross-database identifiers. The production ETL retains source QIDs and provenance.\n\nTMDB\nThe production dataset can enrich movies with localized titles and overviews, release information, runtime, genres, director, cast, vote average/count and licensed image references.\n\nCurated normalization\nReelSpan converts source periods into independent inclusive time ranges and precomputes location ancestors. Contemporary titles are normalized to the release decade under the current product rule."
+            "value": "TMDB — movie metadata and images\n\nWikidata / open knowledge sources — story location, story period and identifiers\n\nCurated data — normalization and correction of story time/location data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wikidata\n核心知识图谱用于对齐电影身份、故事地点（P840）、故事时期（P2408）、地点层级和跨数据库 ID。生产 ETL 会保留来源 QID 和数据来源信息。\n\nTMDB\n生产数据可补充多语言片名与简介、上映信息、时长、类型、导演、演员、评分/评分人数以及经许可的图片引用。\n\n整理与归一化\nReelSpan 将来源时期转换为相互独立且包含端点的时间区间，并预计算地点上级关系。按当前产品规则，当代作品按上映年份所在十年归一化。"
+            "value": "TMDB — 电影元数据和图片\n\nWikidata / 开放知识来源 — 故事地点、故事时期和标识符\n\n整理数据 — 故事时间/地点数据的归一化与修正"
           }
         }
       }
@@ -1092,13 +1092,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan provides movie discovery based on place and story time. Story locations and time ranges may be incomplete or approximate because source metadata varies by title.\n\nA one-time Full Access purchase, when enabled, is processed by the App Store. Restore Purchase uses StoreKit and your App Store account; ReelSpan does not create a separate account.\n\nMovie metadata, posters and backdrops remain the property of their respective rights holders and data licensors. The app license does not transfer ownership of third-party content."
+            "value": "ReelSpan is free to use. Optional tips are consumable in-app purchases processed by Apple. Tips are voluntary and do not unlock features, provide digital content, create a subscription, grant credits, or provide any permanent entitlement.\n\nMovie metadata and images may be provided by third-party services including The Movie Database (TMDB). Story locations and story periods may be derived from open knowledge sources and curated data. Movie and story data may contain errors, omissions, or differing interpretations.\n\nConsumable tips do not create restorable entitlements and do not require a user account."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "ReelSpan 根据地点和故事时间提供电影发现功能。由于不同作品的来源元数据完整度不同，故事地点和时间范围可能存在缺失或近似。\n\n启用后，一次性完整功能购买由 App Store 处理。恢复购买使用 StoreKit 和你的 App Store 账户；ReelSpan 不创建独立账户。\n\n电影元数据、海报和背景图的权利仍属于各自权利人和数据许可方。购买 App 不会转移任何第三方内容的所有权。"
+            "value": "ReelSpan 免费使用。可选打赏是由 Apple 处理的消耗型 App 内购买项目。打赏是自愿的，不会解锁功能、提供数字内容、创建订阅、授予 credits 或任何永久权益。\n\n电影元数据和图片可能由包括 The Movie Database（TMDB）在内的第三方服务提供。故事地点和故事时期可能来自开放知识来源与整理数据。电影和故事数据可能存在错误、遗漏或不同解释。\n\n消耗型打赏不产生可恢复的权益，也不需要用户账号。"
           }
         }
       }
@@ -1124,13 +1124,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This product uses the TMDB API but is not endorsed or certified by TMDB.\n\nThe production release must follow the exact attribution, logo, image and commercial-use requirements in the TMDB agreement applicable to the project at release time."
+            "value": "ReelSpan uses The Movie Database (TMDB) for movie metadata and images.\n\nThis product uses the TMDB API but is not endorsed or certified by TMDB."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "本产品使用 TMDB API，但未得到 TMDB 的背书或认证。\n\n正式发布版本必须遵守项目发布时适用的 TMDB 协议中关于归因、Logo、图片及商业使用的具体要求。"
+            "value": "ReelSpan 使用 The Movie Database（TMDB）提供电影元数据和图片。\n\n本产品使用 TMDB API，但未得到 TMDB 的背书或认证。"
           }
         }
       }
@@ -1503,166 +1503,6 @@
         }
       }
     },
-    "purchase.cancelled": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Purchase cancelled."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "购买已取消。"
-          }
-        }
-      }
-    },
-    "purchase.configure_product": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Configure the non-consumable product in App Store Connect first."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请先在 App Store Connect 中配置非消耗型购买项目。"
-          }
-        }
-      }
-    },
-    "purchase.gate.buy": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlock Full Access · %@"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "解锁完整功能 · %@"
-          }
-        }
-      }
-    },
-    "purchase.gate.note": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "One-time purchase. No account or subscription. Purchases are handled by the App Store."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一次买断，无账号、无订阅。购买由 App Store 处理。"
-          }
-        }
-      }
-    },
-    "purchase.gate.subtitle": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Explore movies by where and when their stories take place. Unlock the complete local movie atlas with one purchase."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按故事发生的地点与时间探索电影。一次购买即可永久解锁完整的本地电影地图。"
-          }
-        }
-      }
-    },
-    "purchase.not_found": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No purchase found."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未找到可恢复的购买。"
-          }
-        }
-      }
-    },
-    "purchase.pending": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Purchase pending."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "购买处理中。"
-          }
-        }
-      }
-    },
-    "purchase.product_not_configured": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Product is not configured yet."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "购买项目尚未配置。"
-          }
-        }
-      }
-    },
-    "purchase.restored": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Purchase restored."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "购买已恢复。"
-          }
-        }
-      }
-    },
-    "purchase.unlocked": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Full Access unlocked."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完整功能已解锁。"
-          }
-        }
-      }
-    },
     "search.result.movie": {
       "localizations": {
         "en": {
@@ -1851,22 +1691,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d 部保存在本地"
-          }
-        }
-      }
-    },
-    "settings.full_access": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Full Access"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完整功能"
           }
         }
       }
@@ -2207,22 +2031,6 @@
         }
       }
     },
-    "settings.restore_purchase": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restore Purchase"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "恢复购买"
-          }
-        }
-      }
-    },
     "settings.section.app": {
       "localizations": {
         "en": {
@@ -2287,22 +2095,6 @@
         }
       }
     },
-    "settings.section.purchase": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Purchase"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "购买"
-          }
-        }
-      }
-    },
     "settings.section.support": {
       "localizations": {
         "en": {
@@ -2315,6 +2107,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "支持"
+          }
+        }
+      }
+    },
+    "settings.section.sources": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data Sources"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据来源"
           }
         }
       }
@@ -2463,20 +2271,94 @@
         }
       }
     },
-    "settings.unlocked": {
+    "tip.cancelled": {
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlocked"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已解锁"
-          }
-        }
+        "en": { "stringUnit": { "state": "translated", "value": "Payment was cancelled." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "付款已取消。" } }
+      }
+    },
+    "tip.description": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tips are voluntary and do not unlock features, provide digital content, create a subscription, grant credits, or create a permanent entitlement." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打赏是自愿的，不会解锁功能、提供数字内容、创建订阅、授予 credits 或产生永久权益。" } }
+      }
+    },
+    "tip.large": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Large tip" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "大额打赏" } }
+      }
+    },
+    "tip.loading": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Loading Apple prices…" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在加载 Apple 价格…" } }
+      }
+    },
+    "tip.medium": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Medium tip" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "中额打赏" } }
+      }
+    },
+    "tip.payment_apple": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Payment is handled by Apple." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "付款由 Apple 处理。" } }
+      }
+    },
+    "tip.pending": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Your tip is awaiting approval." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "你的打赏正在等待批准。" } }
+      }
+    },
+    "tip.small": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Small tip" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "小额打赏" } }
+      }
+    },
+    "tip.support": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Support ReelSpan" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "支持 ReelSpan" } }
+      }
+    },
+    "tip.thanks": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Thank you for supporting ReelSpan." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "感谢你支持 ReelSpan。" } }
+      }
+    },
+    "tip.title": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Support ReelSpan" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "支持 ReelSpan" } }
+      }
+    },
+    "tip.try_again": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Try again" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重试" } }
+      }
+    },
+    "tip.unavailable": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tips are currently unavailable in the App Store." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "App Store 中暂时无法使用打赏。" } }
+      }
+    },
+    "tip.unverified": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The App Store payment could not be verified." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法验证 App Store 付款。" } }
+      }
+    },
+    "tip.waiting": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Waiting for Apple…" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在等待 Apple…" } }
       }
     },
     "year.bce": {

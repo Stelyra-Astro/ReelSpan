@@ -20,7 +20,7 @@ public enum LanguageResolver {
 }
 
 public enum InterfaceLanguageResolver {
-    public static let supportedIdentifiers = ["en", "zh-Hans", "ja", "fr", "de", "es", "it", "pt", "ko"]
+    public static let supportedIdentifiers = ["en", "zh-Hans"]
 
     public static func identifier(preference: String, systemLanguages: [String]) -> String {
         if preference != "system", supportedIdentifiers.contains(preference) { return preference }
