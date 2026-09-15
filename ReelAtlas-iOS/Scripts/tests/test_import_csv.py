@@ -161,12 +161,8 @@ class ImportCSVTests(unittest.TestCase):
             ).fetchall()
             self.assertEqual(flags, [("QT1", 1), ("QT2", 0)])
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
-            columns = [row[1] for row in connection.execute("PRAGMA table_info(movies)")]
-            self.assertEqual(columns, ["movie_qid", "id", "imdb_id", "tmdb_movie_id"])
-            identity = connection.execute(
-                "SELECT id,movie_qid,imdb_id,tmdb_movie_id FROM movies WHERE movie_qid='Q1'"
-            ).fetchone()
-            self.assertEqual(identity, (1, "Q1", "tt0000001", 1))
+            labels = connection.execute("SELECT labels_json FROM movies WHERE movie_qid='Q1'").fetchone()[0]
+            self.assertEqual(labels, '{"en":"One","zh":"一"}')
 
     def test_zip_source_is_extracted_and_imported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -185,10 +181,8 @@ class ImportCSVTests(unittest.TestCase):
 
             self.assertEqual(counts["targets"], 1)
             with sqlite3.connect(database) as connection:
-                identity = connection.execute(
-                    "SELECT movie_qid,imdb_id,tmdb_movie_id FROM movies WHERE movie_qid='Q1'"
-                ).fetchone()
-            self.assertEqual(identity, ("Q1", "tt0000001", 1))
+                title = connection.execute("SELECT title_en FROM movies WHERE movie_qid='Q1'").fetchone()[0]
+            self.assertEqual(title, "One")
 
     def test_global_export_merges_without_inventing_target_matches(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -233,7 +227,7 @@ class ImportCSVTests(unittest.TestCase):
                 )
                 self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
-    def test_global_merge_updates_only_movie_identity_and_is_idempotent(self) -> None:
+    def test_global_merge_preserves_overview_fields_updates_existing_movie_and_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             regional = directory / "regional" / "alpha"
@@ -247,7 +241,7 @@ class ImportCSVTests(unittest.TestCase):
 
             global_root = directory / "global"
             global_root.mkdir()
-            updated = dict(rows["movies.csv"][0], imdb_id="tt9999999", tmdb_movie_id="99")
+            updated = dict(rows["movies.csv"][0], overview_en="Updated supplied overview")
             write_csv(global_root / "movies.csv", [updated])
             write_csv(global_root / "places.csv", rows["places.csv"])
             headers = [name for name in HEADERS["movie_locations.csv"] if name != "is_target_match"]
@@ -263,9 +257,14 @@ class ImportCSVTests(unittest.TestCase):
 
             with sqlite3.connect(database) as connection:
                 values = connection.execute(
-                    "SELECT imdb_id,tmdb_movie_id FROM movies WHERE movie_qid='Q1'"
+                    "SELECT tmdb_overview,tmdb_tagline,overview_en,overview_source,"
+                    "overview_source_title,overview_source_url,overview_license "
+                    "FROM movies WHERE movie_qid='Q1'"
                 ).fetchone()
-                self.assertEqual(values, ("tt9999999", 99))
+                self.assertEqual(values, (
+                    "TMDB overview", "Tagline", "Updated supplied overview", "wikipedia_en",
+                    "One", "https://en.wikipedia.org/wiki/One", "CC BY-SA 4.0",
+                ))
                 # One target-scoped issue and one global issue; the second global merge adds none.
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM normalization_issues").fetchone()[0], 2)
 

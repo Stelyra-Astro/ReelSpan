@@ -52,6 +52,20 @@ public struct MovieCast: Codable, Equatable, Sendable {
         self.order = order
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, name, originalName, character, profilePath, order
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        originalName = try container.decodeIfPresent(String.self, forKey: .originalName) ?? name
+        character = try container.decodeIfPresent(String.self, forKey: .character) ?? ""
+        profilePath = try container.decodeIfPresent(String.self, forKey: .profilePath)
+        order = try container.decodeIfPresent(Int.self, forKey: .order) ?? 9_999
+    }
+
     public var profileURL: URL? {
         MovieMetadataImageURLs.profile(path: profilePath)
     }
@@ -117,6 +131,34 @@ public struct MovieMetadata: Codable, Equatable, Sendable {
         self.cast = cast
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, title, originalTitle, overview, tagline, posterPath, posterUrl, backdropPath
+        case releaseDate, runtime, originalLanguage, status, genres, rating, voteCount, popularity
+        case directors, cast
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        originalTitle = try container.decodeIfPresent(String.self, forKey: .originalTitle) ?? ""
+        overview = try container.decodeIfPresent(String.self, forKey: .overview) ?? ""
+        tagline = try container.decodeIfPresent(String.self, forKey: .tagline) ?? ""
+        posterPath = try container.decodeIfPresent(String.self, forKey: .posterPath)
+        posterUrl = try container.decodeIfPresent(String.self, forKey: .posterUrl)
+        backdropPath = try container.decodeIfPresent(String.self, forKey: .backdropPath)
+        releaseDate = try container.decodeIfPresent(String.self, forKey: .releaseDate)
+        runtime = try container.decodeIfPresent(Int.self, forKey: .runtime)
+        originalLanguage = try container.decodeIfPresent(String.self, forKey: .originalLanguage) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        genres = try container.decodeIfPresent([NamedMovieValue].self, forKey: .genres) ?? []
+        rating = try container.decodeIfPresent(Double.self, forKey: .rating) ?? 0
+        voteCount = try container.decodeIfPresent(Int.self, forKey: .voteCount) ?? 0
+        popularity = try container.decodeIfPresent(Double.self, forKey: .popularity) ?? 0
+        directors = try container.decodeIfPresent([MoviePerson].self, forKey: .directors) ?? []
+        cast = try container.decodeIfPresent([MovieCast].self, forKey: .cast) ?? []
+    }
+
     public var posterURL: URL? {
         MovieMetadataImageURLs.poster(primary: posterUrl, path: posterPath)
     }
@@ -176,6 +218,25 @@ public struct MovieSearchItem: Codable, Equatable, Sendable {
         self.popularity = popularity
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, title, originalTitle, overview, posterPath, posterUrl, releaseDate
+        case rating, voteCount, popularity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        originalTitle = try container.decodeIfPresent(String.self, forKey: .originalTitle) ?? ""
+        overview = try container.decodeIfPresent(String.self, forKey: .overview) ?? ""
+        posterPath = try container.decodeIfPresent(String.self, forKey: .posterPath)
+        posterUrl = try container.decodeIfPresent(String.self, forKey: .posterUrl)
+        releaseDate = try container.decodeIfPresent(String.self, forKey: .releaseDate)
+        rating = try container.decodeIfPresent(Double.self, forKey: .rating) ?? 0
+        voteCount = try container.decodeIfPresent(Int.self, forKey: .voteCount) ?? 0
+        popularity = try container.decodeIfPresent(Double.self, forKey: .popularity) ?? 0
+    }
+
     public var posterURL: URL? {
         MovieMetadataImageURLs.searchPoster(primary: posterUrl, path: posterPath)
     }
@@ -220,5 +281,35 @@ public enum MovieMetadataImageURLs {
         return baseURL
             .appendingPathComponent(size)
             .appendingPathComponent(String(path.dropFirst()))
+    }
+}
+
+
+public struct MovieRanking: Codable, Equatable, Sendable {
+    public let tmdbID: Int
+    public let rating: Double
+    public let voteCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case tmdbID = "tmdb_id"
+        case rating
+        case voteCount = "vote_count"
+    }
+
+    public init(tmdbID: Int, rating: Double, voteCount: Int) {
+        self.tmdbID = tmdbID
+        self.rating = rating
+        self.voteCount = voteCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tmdbID = try container.decode(Int.self, forKey: .tmdbID)
+        rating = try container.decodeIfPresent(Double.self, forKey: .rating) ?? 0
+        voteCount = try container.decodeIfPresent(Int.self, forKey: .voteCount) ?? 0
+    }
+
+    public var score: Double {
+        RankingCalculator.reelSpanScore(rating: rating, votes: voteCount)
     }
 }

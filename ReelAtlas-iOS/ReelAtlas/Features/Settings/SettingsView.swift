@@ -72,20 +72,16 @@ private struct SettingsContent: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("settings.section.local_data") {
-                Button("settings.clear_movie_cache", role: .destructive) {
-                    Task {
-                        do {
-                            try await model.metadataStore.clearCache()
-                        } catch {
-                            model.errorMessage = error.localizedDescription
-                        }
-                    }
+            Section("Movie Cache") {
+                LabeledContent("Stored on this device", value: cacheSizeText)
+                Button("Clear Movie Cache", role: .destructive) {
+                    Task { await model.clearMovieCache() }
                 }
-                Text("settings.local_data.note")
+                Text("Movie details and posters are kept for up to 30 days with a shared 150 MiB limit. Story locations, favorites, and preferences are not removed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .onAppear { model.refreshMovieCacheSize() }
 
             Section("settings.section.privacy_legal") {
                 pageRow(.privacy)
@@ -108,6 +104,10 @@ private struct SettingsContent: View {
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private var cacheSizeText: String {
+        ByteCountFormatter.string(fromByteCount: model.movieCacheBytes, countStyle: .file)
     }
 
     private var appVersion: String {

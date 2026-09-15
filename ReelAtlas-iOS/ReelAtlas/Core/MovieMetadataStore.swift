@@ -137,12 +137,13 @@ public final class MovieMetadataStore: ObservableObject {
         try await service.search(query: query, page: page)
     }
 
-    public func clearCache() async throws {
+    public func resetLoadedMetadata() {
         for task in tasks.values { task.cancel() }
         tasks.removeAll()
         generations.removeAll()
         states.removeAll()
-        try await service.clearCache()
+        for id in visible.keys { start(id, detail: false) }
+        for id in details.keys { start(id, detail: true) }
     }
 
     private func start(_ id: Int, detail: Bool) {

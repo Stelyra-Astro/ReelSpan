@@ -184,6 +184,29 @@ final class ContentRepository {
         []
     }
 
+    func candidateMovies(
+        startYear: Int,
+        endYear: Int,
+        targetQID: String,
+        preferredLanguage: String,
+        favoritesOnly: Bool,
+        favoriteIDs: Set<Int>,
+        maximum: Int = 300
+    ) -> [MovieViewData] {
+        guard maximum > 0 else { return [] }
+        return movieIDs(
+            startYear: startYear,
+            endYear: endYear,
+            targetQID: targetQID,
+            favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs,
+            limit: maximum,
+            offset: 0
+        )
+        .compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
+        .filter { $0.tmdbID != nil }
+    }
+
     func searchPage(
         startYear: Int,
         endYear: Int,
@@ -463,16 +486,5 @@ final class ContentRepository {
             + cos(latitude1 * radians) * cos(latitude2 * radians)
             * sin(deltaLongitude / 2) * sin(deltaLongitude / 2)
         return 6_371 * 2 * atan2(sqrt(a), sqrt(1 - a))
-    }
-}
-
-actor MovieSearchWorker {
-    func suggestions(query: String, preferredLanguage: String) -> [MovieViewData] {
-        guard !Task.isCancelled else { return [] }
-        let content = try? ContentRepository()
-        return content?.movieSearchMatches(
-            query: query,
-            preferredLanguage: preferredLanguage
-        ) ?? []
     }
 }

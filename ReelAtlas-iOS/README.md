@@ -1,6 +1,6 @@
 # ReelSpan iOS MVP
 
-Native SwiftUI/MapKit movie-discovery app implementing the agreed MVP: select a place and story year, then discover movies whose narrative locations and story-time ranges match. The app is account-free, downloads the current story dataset from Supabase into an offline SQLite cache, stores favorites locally, and is designed for a one-time App Store purchase.
+Native SwiftUI/MapKit movie-discovery app implementing the agreed MVP: select a place and story year, then discover movies whose narrative locations and story-time ranges match. The app is account-free, uses a local movie database, stores favorites locally, and is designed for a one-time App Store purchase.
 
 ## Open in Xcode
 1. Open `ReelSpan.xcodeproj`.
@@ -18,7 +18,7 @@ The generation environment does not contain Xcode/MapKit, so the final native ta
 - Multiple independent story-time ranges per movie.
 - Multiple direct narrative locations per movie.
 - Exact location first; if there are no results, fall back through administrative parents until country.
-- Movie list: dynamically loaded title, poster, release year, runtime, genre tags, TMDB rating/count, plus bundled ReelSpan story locations and story times.
+- Movie list: dynamically cached poster, title, release year, runtime, genre tags, TMDB rating/count, story locations and story times.
 - Movie detail: backdrop, larger poster, overview, director, cast, full time/location data, runtime and release metadata.
 - Favorites stored only on device.
 - Feature-length documentaries remain in the movie dataset.
@@ -31,19 +31,24 @@ The generation environment does not contain Xcode/MapKit, so the final native ta
 
 The Release build checks a StoreKit 2 non-consumable entitlement before allowing access. Debug builds bypass the gate so the project can be tested before App Store Connect is configured. Restore Purchase is included in both the paywall and Settings.
 
-## Runtime data and local databases
-The project deliberately separates replaceable content data from user data.
+## Supabase content and local cache
+The project separates server-owned story content from runtime user data.
 
-### Story dataset
-`Data/content_seed.sqlite` is the canonical ETL/upload artifact and is not bundled in the app. On first launch, the app downloads the compact story dataset from Supabase and creates `Application Support/ReelAtlas/content.sqlite`. Later launches reuse that cache until Supabase's dataset version changes.
+### Story content
+`Data/content_seed.sqlite` is the canonical ETL output used by
+`Scripts/upload_story_content.py`. The upload populates the `story_*` tables in
+the ReelSpan Supabase project. The app bundle contains no content database.
 
-The story cache contains:
-- only `id`, `movie_qid`, `imdb_id`, and `tmdb_movie_id` in `movies`,
-- ReelSpan place, administrative, story-location, story-period, source, and confidence data,
+At launch, the app reads `dataset_meta`, downloads the current `story_*` rows
+when the version changes, and atomically rebuilds
+`Application Support/ReelAtlas/content.sqlite` as an offline cache containing:
+- all fields from `target.csv`, `movies.csv`, `movie_target_matches.csv`, `movie_locations.csv`, `movie_periods.csv`, `places.csv`, and `normalization_issues.csv`,
+- unmodified JSON payloads and all movie/place/administrative QIDs,
 - target-scoped movie-location rows so `is_target_match` retains its regional meaning,
 - unique movie-to-target matches and independent story-period ranges.
 
-Movie titles, overviews, artwork, release/runtime/rating fields, genres, directors, and cast are requested from the configured metadata Worker and cached locally only after use.
+TMDB-owned title, poster, overview, cast, and director data are not stored in
+the `story_*` tables. They remain the responsibility of the TMDB metadata path.
 
 Map labels remain controlled by Apple Maps and the system locale.
 
@@ -53,14 +58,18 @@ Created at runtime and kept separate from content updates. It stores favorites a
 ## i18n
 UI copy uses `ReelAtlas/Resources/Localizable.xcstrings` and follows the iPhone system language. English and Simplified Chinese are included in this MVP. The movie-content language setting is separate from the app UI language and follows the fallback rule above.
 
-## Image strategy
-- No movie artwork is bundled.
-- Artwork returned by the metadata Worker is cached under Application Support and can be cleared independently.
+## Movie metadata and image strategy
+- Movie rows use dynamic TMDB metadata rather than titles embedded in the story SQLite cache.
+- Detail resolution is device cache → Supabase `public.movies.payload` → `https://tmdb.xiaoguiwk.top` fallback.
+- The Worker is the only TMDB credential holder. On a cache miss it fetches TMDB data, stores the movie in Supabase and copies the w185 poster to the public `posters` bucket.
+- Device movie metadata and posters share a 30-day / 150 MiB persistent cache. Settings can clear this cache without removing story content, favorites, or preferences.
+- The drawer is paged in groups of 15. Search suggestions show places first and database-backed movies second, with at most 10 suggestions total.
 
 ## CSV import files
-- `Data/schema.sql` — runtime schema; verbose upstream movie metadata is validated but not persisted.
-- `Data/content_seed.sqlite` — canonical imported database.
+- `Data/schema.sql` — schema for the current CSV fields.
+- `Data/content_seed.sqlite` — canonical local ETL output; not an app resource.
 - `Scripts/import_csv.py` — repeatable ZIP/directory importer.
+- `Scripts/upload_story_content.py` — idempotent Supabase uploader.
 - `docs/DATA_PIPELINE.md` — merge, validation, and runtime-query contract.
 
 The legacy language-pack and sample JSON fixtures are not inputs to the current import.
@@ -71,9 +80,9 @@ After opening the project, run:
 ```bash
 xcodebuild -project ReelSpan.xcodeproj \
   -scheme ReelSpan \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  archive
+  -sdk iphonesimulator \
+  -configuration Debug \
+  build CODE_SIGNING_ALLOWED=NO
 ```
 
-Test the resulting archive on an iPhone for MapKit place search/tap selection, first-launch story sync, StoreKit sandbox purchase/restore, metadata and artwork caching, localization, and local favorites.
+Then test on an iPhone for MapKit place search/tap selection, StoreKit sandbox purchase/restore, image downloads, localization, and local favorites.

@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isContentLoading = true
     @Published private(set) var isLoadingMovies = false
     @Published private(set) var hasMoreMovies = false
+    @Published private(set) var movieCacheBytes: Int64 = 0
     @Published var iCloudBackupEnabled: Bool
 
     let metadataStore = MovieMetadataStore()
@@ -54,11 +55,15 @@ final class AppModel: ObservableObject {
     }
 
     private func loadStoryContent() async {
+        defer { isContentLoading = false }
         do {
             let databaseURL = try await contentSync.ensureCurrentContent()
-            content = try ContentRepository(databaseURL: databaseURL)
-            databaseVersion = content?.databaseVersion() ?? "Unknown"
-            isContentLoading = false
+            let repository = try ContentRepository(databaseURL: databaseURL)
+            content = repository
+            await searchData.configure(databaseURL: databaseURL)
+            await moviePages.configure(databaseURL: databaseURL)
+            databaseVersion = repository.databaseVersion()
+
             if contentBootstrapGate.markContentReady() {
                 await resolvePendingInitialLocation()
             } else {
@@ -66,7 +71,6 @@ final class AppModel: ObservableObject {
             }
             if iCloudBackupEnabled { await restoreICloudBackup() }
         } catch {
-            isContentLoading = false
             errorMessage = error.localizedDescription
         }
     }
@@ -140,6 +144,20 @@ final class AppModel: ObservableObject {
         if next { favoriteIDs.insert(movieID) } else { favoriteIDs.remove(movieID) }
         if favoritesOnly { reload() }
         scheduleICloudBackup()
+    }
+
+    func refreshMovieCacheSize() {
+        Task { [weak self] in
+            guard let self else { return }
+            let bytes = await metadataStore.service.cacheBytes()
+            movieCacheBytes = bytes
+        }
+    }
+
+    func clearMovieCache() async {
+        try? await metadataStore.service.clearCache()
+        metadataStore.resetLoadedMetadata()
+        movieCacheBytes = 0
     }
 
     func setICloudBackupEnabled(_ enabled: Bool) {
@@ -303,7 +321,8 @@ final class AppModel: ObservableObject {
                 language: language,
                 favoritesOnly: favoritesOnly,
                 favoriteIDs: favoriteIDs,
-                offset: offset
+                offset: offset,
+                metadataService: metadataStore.service
             )
             guard !Task.isCancelled, moviePageGeneration == generation else { return }
             movies.append(contentsOf: page.movies)
@@ -332,11 +351,23 @@ final class AppModel: ObservableObject {
 }
 
 private actor MoviePageWorker {
-    private var content: ContentRepository?
+    private struct QueryKey: Hashable {
+        let startYear: Int
+        let endYear: Int
+        let targetQID: String
+        let language: String
+        let favoritesOnly: Bool
+        let favoriteIDs: [Int]
+    }
 
-    private func repository() -> ContentRepository? {
-        if content == nil { content = try? ContentRepository() }
-        return content
+    private var content: ContentRepository?
+    private var currentKey: QueryKey?
+    private var rankedMovies: [MovieViewData] = []
+
+    func configure(databaseURL: URL) {
+        content = try? ContentRepository(databaseURL: databaseURL)
+        currentKey = nil
+        rankedMovies = []
     }
 
     func page(
@@ -346,17 +377,41 @@ private actor MoviePageWorker {
         language: String,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
-        offset: Int
-    ) -> MoviePage {
-        guard !Task.isCancelled, let content = repository() else { return .empty }
-        return content.searchPage(
-            startYear: startYear,
-            endYear: endYear,
-            targetQID: targetQID,
-            preferredLanguage: language,
-            favoritesOnly: favoritesOnly,
-            favoriteIDs: favoriteIDs,
-            offset: offset
+        offset: Int,
+        metadataService: MovieMetadataService
+    ) async -> MoviePage {
+        guard !Task.isCancelled, let content else { return .empty }
+        let key = QueryKey(
+            startYear: startYear, endYear: endYear, targetQID: targetQID, language: language,
+            favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs.sorted()
+        )
+
+        if currentKey != key || offset == 0 {
+            let candidates = content.candidateMovies(
+                startYear: startYear, endYear: endYear, targetQID: targetQID,
+                preferredLanguage: language, favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs
+            )
+            let tmdbIDs = candidates.compactMap(\.tmdbID)
+            let rankings = (try? await metadataService.rankings(tmdbIDs: tmdbIDs)) ?? []
+            let rankingByTMDB = Dictionary(uniqueKeysWithValues: rankings.map { ($0.tmdbID, $0) })
+            let byLocalID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+            let ordered = MovieRankingPolicy.sortedCandidates(
+                candidates.map { MovieRankingCandidate(localID: $0.id, tmdbID: $0.tmdbID) },
+                rankings: rankings
+            )
+            rankedMovies = ordered.compactMap { candidate in
+                guard let movie = byLocalID[candidate.localID] else { return nil }
+                guard let tmdbID = movie.tmdbID, let ranking = rankingByTMDB[tmdbID] else { return movie }
+                return movie.applying(ranking: ranking)
+            }
+            currentKey = key
+        }
+
+        guard offset < rankedMovies.count else { return .empty }
+        let end = min(rankedMovies.count, offset + MoviePaginationPolicy.resultPageSize)
+        return MoviePage(
+            movies: Array(rankedMovies[offset..<end]),
+            hasMore: end < rankedMovies.count
         )
     }
 }
@@ -364,10 +419,11 @@ private actor MoviePageWorker {
 /// SQLite work stays off the main actor and never runs from a SwiftUI body.
 private actor SearchDataWorker {
     private var content: ContentRepository?
-    private func repository() -> ContentRepository? {
-        if content == nil { content = try? ContentRepository() }
-        return content
+
+    func configure(databaseURL: URL) {
+        content = try? ContentRepository(databaseURL: databaseURL)
     }
+
     struct Place: Sendable {
         let name: String
         let latitude: Double
@@ -375,9 +431,10 @@ private actor SearchDataWorker {
         let names: [String]
         let country: String?
     }
+
     func places(query: String, language: String) -> [Place] {
         guard !Task.isCancelled, query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2,
-              let content = repository() else { return [] }
+              let content else { return [] }
         return content.administrativeLocationMatches(query: query, preferredLanguage: language).compactMap { location in
             guard !Task.isCancelled, let latitude = location.latitude, let longitude = location.longitude else { return nil }
             var names = [location.name]
@@ -393,11 +450,12 @@ private actor SearchDataWorker {
             return Place(name: location.name, latitude: latitude, longitude: longitude, names: names, country: country)
         }
     }
+
     func movies(_ items: [MovieSearchItem], language: String) -> [MovieViewData] {
-        let content = repository()
+        guard let content else { return [] }
         return items.compactMap { item in
-            guard !Task.isCancelled else { return nil }
-            return MovieViewData.searchResult(item, local: content?.movie(tmdbID: item.id, preferredLanguage: language))
+            guard !Task.isCancelled, let local = content.movie(tmdbID: item.id, preferredLanguage: language) else { return nil }
+            return MovieViewData.searchResult(item, local: local)
         }
     }
 }

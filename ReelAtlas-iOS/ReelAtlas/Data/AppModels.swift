@@ -92,17 +92,33 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
         )
     }
 
-    /// Search-only movies use a temporary negative identity and cannot be favorited.
-    static func searchResult(_ item: MovieSearchItem, local: MovieViewData?) -> MovieViewData {
+    /// Movie search only exposes titles that already belong to ReelSpan's story database.
+    static func searchResult(_ item: MovieSearchItem, local: MovieViewData) -> MovieViewData {
         MovieViewData(
-            id: local?.id ?? -item.id, movieQID: local?.movieQID ?? "", imdbID: local?.imdbID, tmdbID: item.id,
+            id: local.id, movieQID: local.movieQID, imdbID: local.imdbID, tmdbID: item.id,
             title: item.title, overview: item.overview, tagline: "", overviewSource: "", overviewSourceTitle: "",
             overviewSourceURL: "", overviewLicense: "", releaseDate: item.releaseDate,
             releaseYear: item.releaseDate.flatMap { Int($0.prefix(4)) }, runtimeMinutes: nil, sourceImage: nil,
-            originalLanguage: "", rating: item.rating, voteCount: item.voteCount, rankingScore: local?.rankingScore ?? 0,
+            originalLanguage: "", rating: item.rating, voteCount: item.voteCount,
+            rankingScore: RankingCalculator.reelSpanScore(rating: item.rating, votes: item.voteCount),
             smallPosterFilename: nil, largePosterURL: item.posterURL?.absoluteString, backdropURL: nil,
             director: nil, originCountries: [], isDocumentary: false, genres: [],
-            timeRanges: local?.timeRanges ?? [], locations: local?.locations ?? [], cast: []
+            timeRanges: local.timeRanges, locations: local.locations, cast: []
+        )
+    }
+
+    func applying(ranking: MovieRanking) -> MovieViewData {
+        MovieViewData(
+            id: id, movieQID: movieQID, imdbID: imdbID, tmdbID: tmdbID,
+            title: title, overview: overview, tagline: tagline,
+            overviewSource: overviewSource, overviewSourceTitle: overviewSourceTitle,
+            overviewSourceURL: overviewSourceURL, overviewLicense: overviewLicense,
+            releaseDate: releaseDate, releaseYear: releaseYear, runtimeMinutes: runtimeMinutes,
+            sourceImage: sourceImage, originalLanguage: originalLanguage,
+            rating: ranking.rating, voteCount: ranking.voteCount, rankingScore: ranking.score,
+            smallPosterFilename: smallPosterFilename, largePosterURL: largePosterURL, backdropURL: backdropURL,
+            director: director, originCountries: originCountries, isDocumentary: isDocumentary, genres: genres,
+            timeRanges: timeRanges, locations: locations, cast: cast
         )
     }
 

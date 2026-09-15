@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - iOS deployment target remains 17.0.
-- All metadata and movie-search requests use `https://tmdb.xiaoguiwk.top` with `language=en-US`.
+- All metadata and movie-search requests use `https://reelspan-tmdb.xiaoguiwk.workers.dev` with `language=en-US`.
 - No TMDB or Supabase secret may exist in the app, and the app never requests `api.themoviedb.org` or the Supabase database.
 - Detail posters prefer Worker `posterUrl`; `posterPath` is only the centralized fallback and remains permitted for search-result thumbnails.
 - Device cache maximum age is 30 days and aggregate maximum size is 150 MiB.
@@ -49,7 +49,7 @@ func testWorkerDetailDecodesPosterURLDirectorsAndCast() throws {
 
 func testDetailRequestUsesOnlyWorkerAndFixedEnglish() throws {
     let request = try MovieMetadataRequest.detail(tmdbID: 550).urlRequest
-    XCTAssertEqual(request.url?.absoluteString, "https://tmdb.xiaoguiwk.top/movie/550?language=en-US")
+    XCTAssertEqual(request.url?.absoluteString, "https://reelspan-tmdb.xiaoguiwk.workers.dev/movie/550?language=en-US")
     XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
 }
 
@@ -95,7 +95,7 @@ struct MovieMetadata: Codable, Equatable, Sendable {
 }
 
 enum MovieMetadataRequest {
-    static let baseURL = URL(string: "https://tmdb.xiaoguiwk.top")!
+    static let baseURL = URL(string: "https://reelspan-tmdb.xiaoguiwk.workers.dev")!
     case detail(tmdbID: Int)
     case search(query: String, page: Int)
     var urlRequest: URLRequest { get throws }

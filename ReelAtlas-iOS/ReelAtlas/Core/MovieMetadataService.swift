@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 public protocol MovieHTTPTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
@@ -35,6 +38,10 @@ public actor MovieMetadataService {
         var consumers: [UUID: CheckedContinuation<MovieMetadata, Error>]
     }
 
+    private struct SupabaseMovieRow: Decodable {
+        let payload: MovieMetadata
+    }
+
     private let transport: any MovieHTTPTransport
     private let cache: MovieMetadataCache
     private var flights: [Int: Flight] = [:]
@@ -48,9 +55,10 @@ public actor MovieMetadataService {
     }
 
     public func metadata(tmdbID: Int) async throws -> MovieMetadata {
-        let request = try MovieMetadataRequest.detail(tmdbID: tmdbID).urlRequest
+        guard tmdbID > 0 else { throw MovieMetadataRequestError.invalidTMDBID }
         try Task.checkCancellation()
         if let cached = try? cache.readMetadata(tmdbID: tmdbID) { return cached }
+
         let consumer = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -66,14 +74,14 @@ public actor MovieMetadataService {
                 let task = Task {
                     let result: Result<MovieMetadata, Error>
                     do {
-                        let data = try await self.fetch(request)
-                        let metadata: MovieMetadata = try Self.decode(data)
+                        let metadata = try await self.fetchSupabaseThenWorker(tmdbID: tmdbID)
                         guard metadata.id == tmdbID else { throw MovieMetadataError.invalidResponse }
                         try Task.checkCancellation()
-                        // Cache failures must not discard a successful network result.
                         try? self.cache.writeMetadata(metadata, tmdbID: tmdbID)
                         result = .success(metadata)
-                    } catch { result = .failure(error) }
+                    } catch {
+                        result = .failure(error)
+                    }
                     self.finish(tmdbID: tmdbID, generation: generation, result: result)
                 }
                 flights[tmdbID] = Flight(generation: generation, task: task, consumers: [consumer: continuation])
@@ -85,27 +93,54 @@ public actor MovieMetadataService {
 
     public func search(query: String, page: Int = 1) async throws -> MovieSearchPage {
         let request = try MovieMetadataRequest.search(query: query, page: page).urlRequest
-        return try Self.decode(try await fetch(request))
+        return try Self.decode(try await fetchWorker(request))
+    }
+
+    public func rankings(tmdbIDs: [Int]) async throws -> [MovieRanking] {
+        let ids = Array(Set(tmdbIDs.filter { $0 > 0 })).sorted()
+        guard !ids.isEmpty else { return [] }
+        // PostgREST and proxies handle this comfortably for ReelSpan's <=300 candidates.
+        let request = try MovieMetadataRequest.rankings(tmdbIDs: ids).urlRequest
+        let (data, response) = try await raw(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw mapHTTPStatus(response.statusCode)
+        }
+        return try Self.decode(data)
     }
 
     public func imageData(url: URL) async throws -> Data {
         try Task.checkCancellation()
         if let data = cache.cachedImage(for: url) { return data }
-        let data = try await fetch(URLRequest(url: url))
+        let data = try await fetchWorker(URLRequest(url: url))
         try Task.checkCancellation()
         try? cache.writeImage(data, for: url)
         return data
     }
 
-    public func clearCache() throws {
-        for flight in flights.values {
-            flight.task.cancel()
-            for continuation in flight.consumers.values {
-                continuation.resume(throwing: CancellationError())
+    public func clearCache() throws { try cache.clear() }
+    public func trimCache() throws { try cache.trim() }
+    public func cacheBytes() -> Int64 { cache.totalBytes() }
+
+    private func fetchSupabaseThenWorker(tmdbID: Int) async throws -> MovieMetadata {
+        let supabaseRequest = try MovieMetadataRequest.supabaseDetail(tmdbID: tmdbID).urlRequest
+        do {
+            let (data, response) = try await raw(supabaseRequest)
+            if (200..<300).contains(response.statusCode),
+               let row = try? Self.decode([SupabaseMovieRow].self, from: data).first,
+               row.payload.id == tmdbID {
+                return row.payload
             }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            // Supabase is the preferred cache, not a single point of failure.
         }
-        flights.removeAll()
-        try cache.clear()
+
+        let workerRequest = try MovieMetadataRequest.detail(tmdbID: tmdbID).urlRequest
+        let metadata: MovieMetadata = try Self.decode(try await fetchWorker(workerRequest))
+        return metadata
     }
 
     private func cancel(tmdbID: Int, consumer: UUID) {
@@ -122,21 +157,15 @@ public actor MovieMetadataService {
         for consumer in flight.consumers.values { consumer.resume(with: result) }
     }
 
-    private func fetch(_ originalRequest: URLRequest) async throws -> Data {
+    private func raw(_ originalRequest: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try Task.checkCancellation()
         var request = originalRequest
         request.timeoutInterval = 12
         request.cachePolicy = .reloadIgnoringLocalCacheData
         do {
-            let (data, response) = try await transport.data(for: request)
+            let result = try await transport.data(for: request)
             try Task.checkCancellation()
-            switch response.statusCode {
-            case 200..<300: return data
-            case 404: throw MovieMetadataError.notFound
-            case 429: throw MovieMetadataError.rateLimited
-            case 500...599: throw MovieMetadataError.server(response.statusCode)
-            default: throw MovieMetadataError.invalidResponse
-            }
+            return result
         } catch let error as URLError {
             switch error.code {
             case .cancelled: throw CancellationError()
@@ -147,8 +176,27 @@ public actor MovieMetadataService {
         }
     }
 
+    private func fetchWorker(_ request: URLRequest) async throws -> Data {
+        let (data, response) = try await raw(request)
+        guard (200..<300).contains(response.statusCode) else { throw mapHTTPStatus(response.statusCode) }
+        return data
+    }
+
+    private func mapHTTPStatus(_ status: Int) -> MovieMetadataError {
+        switch status {
+        case 404: return .notFound
+        case 429: return .rateLimited
+        case 500...599: return .server(status)
+        default: return .invalidResponse
+        }
+    }
+
     private static func decode<T: Decodable>(_ data: Data) throws -> T {
-        do { return try JSONDecoder().decode(T.self, from: data) }
+        try decode(T.self, from: data)
+    }
+
+    private static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        do { return try JSONDecoder().decode(type, from: data) }
         catch { throw MovieMetadataError.decoding }
     }
 }

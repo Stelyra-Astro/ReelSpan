@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "ReelAtlasCore", targets: ["ReelAtlasCore"])],
     targets: [
-        .target(name: "ReelAtlasCore", path: "ReelAtlas/Core"),
+        .target(name: "ReelAtlasCore", path: "ReelAtlas/Core", exclude: ["MovieMetadataStore.swift"]),
         .testTarget(name: "ReelAtlasCoreTests", dependencies: ["ReelAtlasCore"], path: "Tests/ReelAtlasCoreTests")
     ]
 )

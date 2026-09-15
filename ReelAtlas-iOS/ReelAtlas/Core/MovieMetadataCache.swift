@@ -1,4 +1,6 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import Foundation
 
 public final class MovieMetadataCache {
@@ -91,6 +93,25 @@ public final class MovieMetadataCache {
         }
     }
 
+    public func totalBytes() -> Int64 {
+        withLock {
+            guard fileManager.fileExists(atPath: root.path),
+                  let enumerator = fileManager.enumerator(
+                    at: root,
+                    includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                    options: [.skipsHiddenFiles]
+                  ) else { return 0 }
+            var total: Int64 = 0
+            while let url = enumerator.nextObject() as? URL {
+                guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                      values.isRegularFile == true,
+                      let size = values.fileSize else { continue }
+                total += Int64(size)
+            }
+            return total
+        }
+    }
+
     private func write(_ data: Data, to url: URL) throws {
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
@@ -176,7 +197,18 @@ public final class MovieMetadataCache {
     }
 
     private func digest(_ value: String) -> String {
-        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+        #if canImport(CryptoKit)
+        return SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+        #else
+        // Deterministic fallback for non-Apple SwiftPM test hosts. Cache filenames do not
+        // require cryptographic strength; Apple platforms use SHA-256 above.
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return String(format: "%016llx", hash)
+        #endif
     }
 
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {
