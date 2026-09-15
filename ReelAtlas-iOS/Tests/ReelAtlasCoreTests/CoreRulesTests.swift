@@ -2,6 +2,27 @@ import XCTest
 @testable import ReelAtlasCore
 
 final class CoreRulesTests: XCTestCase {
+    func testContentBootstrapDefersInitialSelectionUntilContentIsReady() {
+        var gate = ContentBootstrapGate()
+
+        XCTAssertFalse(gate.requestInitialSelection())
+        XCTAssertTrue(gate.markContentReady())
+        XCTAssertFalse(gate.markContentReady())
+    }
+
+    func testContentBootstrapScopeDownloadsOnlyPublishedMatchedMovies() throws {
+        let scope = try XCTUnwrap(ContentBootstrapScope(movieQIDs: ["Q2", "Q1", "Q2"]))
+
+        XCTAssertEqual(scope.movieQIDs, ["Q1", "Q2"])
+        XCTAssertEqual(scope.postgRESTMovieFilter, "in.(Q1,Q2)")
+        XCTAssertEqual(
+            ContentBootstrapScope.postgRESTFilter(qids: ["Q956", "Q148", "Q956"]),
+            "in.(Q148,Q956)"
+        )
+        XCTAssertNil(ContentBootstrapScope.postgRESTFilter(qids: []))
+        XCTAssertNil(ContentBootstrapScope(movieQIDs: []))
+    }
+
     func testPosterAssetURLUsesPublicSupabasePosterPath() {
         XCTAssertEqual(
             PosterAssetURL.url(assetID: 1_269_835)?.absoluteString,

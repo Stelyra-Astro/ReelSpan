@@ -4,7 +4,15 @@ import SQLite3
 final class ContentRepository {
     private let db: SQLiteDatabase
 
-    init() throws {
+    convenience init() throws {
+        try self.init(databaseURL: Self.cacheURL())
+    }
+
+    init(databaseURL: URL) throws {
+        db = try SQLiteDatabase(url: databaseURL, readOnly: true)
+    }
+
+    static func cacheURL() throws -> URL {
         let fileManager = FileManager.default
         let support = try fileManager.url(
             for: .applicationSupportDirectory,
@@ -13,28 +21,10 @@ final class ContentRepository {
             create: true
         ).appendingPathComponent("ReelAtlas", isDirectory: true)
         try fileManager.createDirectory(at: support, withIntermediateDirectories: true)
-        let destination = support.appendingPathComponent("content.sqlite")
-        guard let seed = Bundle.main.url(forResource: "content_seed", withExtension: "sqlite") else {
-            throw SQLiteError.open("Bundled content_seed.sqlite is missing")
-        }
-
-        if !fileManager.fileExists(atPath: destination.path) {
-            try fileManager.copyItem(at: seed, to: destination)
-        } else {
-            let bundledVersion = Self.metadataVersion(at: seed)
-            let installedVersion = Self.metadataVersion(at: destination)
-            if bundledVersion != nil, bundledVersion != installedVersion {
-                let replacement = support.appendingPathComponent("content-replacement.sqlite")
-                try? fileManager.removeItem(at: replacement)
-                try fileManager.copyItem(at: seed, to: replacement)
-                try fileManager.removeItem(at: destination)
-                try fileManager.moveItem(at: replacement, to: destination)
-            }
-        }
-        db = try SQLiteDatabase(url: destination, readOnly: true)
+        return support.appendingPathComponent("content.sqlite")
     }
 
-    private static func metadataVersion(at url: URL) -> String? {
+    static func metadataVersion(at url: URL) -> String? {
         guard let database = try? SQLiteDatabase(url: url, readOnly: true),
               let statement = try? database.prepare("SELECT value FROM metadata WHERE key='database_version' LIMIT 1") else {
             return nil
@@ -510,10 +500,9 @@ final class ContentRepository {
 }
 
 actor MovieSearchWorker {
-    private let content = try? ContentRepository()
-
     func suggestions(query: String, preferredLanguage: String) -> [MovieViewData] {
         guard !Task.isCancelled else { return [] }
+        let content = try? ContentRepository()
         return content?.movieSearchMatches(
             query: query,
             preferredLanguage: preferredLanguage

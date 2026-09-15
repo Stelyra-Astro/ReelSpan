@@ -1,5 +1,49 @@
 import Foundation
 
+struct ContentBootstrapScope: Equatable, Sendable {
+    let movieQIDs: [String]
+
+    init?(movieQIDs: [String]) {
+        let normalized = Array(Set(movieQIDs.filter { !$0.isEmpty })).sorted()
+        guard !normalized.isEmpty else { return nil }
+        self.movieQIDs = normalized
+    }
+
+    var postgRESTMovieFilter: String {
+        Self.postgRESTFilter(qids: movieQIDs)!
+    }
+
+    static func postgRESTFilter(qids: [String]) -> String? {
+        let normalized = Array(Set(qids.filter { !$0.isEmpty })).sorted()
+        guard !normalized.isEmpty else { return nil }
+        return "in.(\(normalized.joined(separator: ",")))"
+    }
+}
+
+struct ContentBootstrapGate: Sendable {
+    private var contentIsReady = false
+    private var initialSelectionWasRequested = false
+    private var initialSelectionWasReleased = false
+
+    mutating func requestInitialSelection() -> Bool {
+        initialSelectionWasRequested = true
+        return releaseIfPossible()
+    }
+
+    mutating func markContentReady() -> Bool {
+        contentIsReady = true
+        return releaseIfPossible()
+    }
+
+    private mutating func releaseIfPossible() -> Bool {
+        guard contentIsReady, initialSelectionWasRequested, !initialSelectionWasReleased else {
+            return false
+        }
+        initialSelectionWasReleased = true
+        return true
+    }
+}
+
 public enum PosterAssetURL {
     private static let baseURL = URL(
         string: "https://qvfdtvfgnlpctcykpfgy.supabase.co/storage/v1/object/public/posters/"

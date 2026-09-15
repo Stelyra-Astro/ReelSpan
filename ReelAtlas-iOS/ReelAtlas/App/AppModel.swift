@@ -16,32 +16,48 @@ final class AppModel: ObservableObject {
     @Published var interfaceLanguagePreference: String
     @Published var databaseVersion = "Unknown"
     @Published var isSearching = false
+    @Published private(set) var isContentLoading = true
     @Published var iCloudBackupEnabled: Bool
 
     let imageManager = ImageDownloadManager()
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
     private let movieSearchWorker = MovieSearchWorker()
+    private let contentSync = StoryContentSyncService()
     private var users: UserDatabase?
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
+    private var pendingInitialCoordinate: CLLocationCoordinate2D?
+    private var contentBootstrapGate = ContentBootstrapGate()
     private var cloudBackupTask: Task<Void, Never>?
 
     init() {
         interfaceLanguagePreference = UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "system"
         iCloudBackupEnabled = UserDefaults.standard.object(forKey: "iCloudBackupEnabled") as? Bool ?? true
         do {
-            content = try ContentRepository()
             users = try UserDatabase()
             favoriteIDs = users?.favoriteIDs() ?? []
-            databaseVersion = content?.databaseVersion() ?? "Unknown"
-            applyRegionalCapitalFallback()
         } catch {
             errorMessage = error.localizedDescription
         }
         imageManager.onCacheChanged = { [weak self] in self?.scheduleICloudBackup() }
-        if iCloudBackupEnabled {
-            Task { [weak self] in await self?.restoreICloudBackup() }
+        Task { [weak self] in await self?.loadStoryContent() }
+    }
+
+    private func loadStoryContent() async {
+        defer { isContentLoading = false }
+        do {
+            let databaseURL = try await contentSync.ensureCurrentContent()
+            content = try ContentRepository(databaseURL: databaseURL)
+            databaseVersion = content?.databaseVersion() ?? "Unknown"
+            if contentBootstrapGate.markContentReady() {
+                await resolvePendingInitialLocation()
+            } else {
+                applyRegionalCapitalFallback()
+            }
+            if iCloudBackupEnabled { await restoreICloudBackup() }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -68,6 +84,15 @@ final class AppModel: ObservableObject {
         guard !didResolveInitialLocation else { return }
         didResolveInitialLocation = true
         guard let coordinate = await locationProvider.currentCoordinate() else { return }
+        pendingInitialCoordinate = coordinate
+        if contentBootstrapGate.requestInitialSelection() {
+            await resolvePendingInitialLocation()
+        }
+    }
+
+    private func resolvePendingInitialLocation() async {
+        guard let coordinate = pendingInitialCoordinate else { return }
+        pendingInitialCoordinate = nil
         await selectMapCoordinate(coordinate)
     }
 
@@ -192,6 +217,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D, reportErrors: Bool = true) async {
+        guard content != nil else { return }
         await resolveSelection(reportErrors: reportErrors, fallbackCoordinate: coordinate) {
             try await MapSearchService.reverseLookup(
                 coordinate,

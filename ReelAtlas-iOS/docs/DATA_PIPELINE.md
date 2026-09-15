@@ -26,13 +26,16 @@ Each non-empty regional directory contains one `target.csv` row. `movies`, `plac
 
 ## Runtime queries
 
-The app searches indexed targets from `targets`, filters movies by `movie_target_matches`, applies story years through `movie_periods`, and reads raw narrative places from `movie_locations`. Display titles, directors, origin countries, genres, and original languages are decoded from the CSV JSON fields.
+The uploader maps these tables to Supabase `story_*` tables without changing
+the existing `public.movies` TMDB cache. The app checks `dataset_meta`, then
+rebuilds a local SQLite cache from the public read-only Data API. Map and time
+queries continue to run against that offline cache.
 
 ## Import command
 
 ```bash
-python3 Scripts/import_csv.py /path/to/output.zip Data/content_seed.sqlite \
-  --mirror ReelAtlas/Resources/content_seed.sqlite
+python3 Scripts/import_csv.py /path/to/output.zip Data/content_seed.sqlite
+python3 Scripts/upload_story_content.py Data/content_seed.sqlite --dry-run
 ```
 
 The importer validates CSV structure, JSON, duplicate keys, SQLite integrity, and foreign keys before atomically replacing the destination. If a destination exists, it first creates a timestamped backup beside it.

@@ -6,4 +6,6 @@
 - `content_seed.sqlite` — imported core database used as the canonical output.
 - `../Scripts/import_csv.py` — validates headers and JSON, merges repeated entity rows, preserves target-scoped location rows, and atomically replaces the database.
 
-The same finished database and schema are copied to `ReelAtlas/Resources/` for the app bundle.
+The finished database is uploaded to the ReelSpan Supabase `story_*` tables by
+`../Scripts/upload_story_content.py`. It is not copied into the app bundle; the
+app rebuilds its offline cache from Supabase at runtime.

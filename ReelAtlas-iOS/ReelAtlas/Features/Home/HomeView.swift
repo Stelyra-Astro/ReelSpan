@@ -39,8 +39,10 @@ struct HomeView: View {
         ZStack {
             MapReader { proxy in
                 Map(position: $camera) {
-                    Marker(model.displayedPlaceName, coordinate: model.selectedCoordinate)
-                        .tint(Color(red: 0.45, green: 0.16, blue: 0.12))
+                    if !model.displayedPlaceName.isEmpty {
+                        Marker(model.displayedPlaceName, coordinate: model.selectedCoordinate)
+                            .tint(Color(red: 0.45, green: 0.16, blue: 0.12))
+                    }
                 }
                 .id(model.effectiveInterfaceLanguage)
                 .environment(\.locale, Locale(identifier: model.effectiveInterfaceLanguage))
@@ -378,7 +380,9 @@ struct HomeView: View {
     private var movieSheet: some View {
         if drawerState.level == .tip {
             HStack(spacing: 8) {
-                Text(model.selectedLocation?.name ?? model.displayedPlaceName)
+                Text(model.isContentLoading
+                     ? L10n.text("home.loading_content")
+                     : (model.selectedLocation?.name ?? model.displayedPlaceName))
                     .font(.subheadline.bold())
                     .lineLimit(1)
                 Spacer(minLength: 8)
@@ -400,7 +404,9 @@ struct HomeView: View {
                     }
 
                     HStack(alignment: .firstTextBaseline) {
-                        Text(model.selectedLocation?.name ?? model.displayedPlaceName)
+                        Text(model.isContentLoading
+                             ? L10n.text("home.loading_content")
+                             : (model.selectedLocation?.name ?? model.displayedPlaceName))
                             .font(.title3.bold())
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -419,7 +425,9 @@ struct HomeView: View {
                     Text("\(L10n.year(model.storyTimeSelection.startYear))–\(L10n.year(model.storyTimeSelection.endYear))")
                         .font(.subheadline.monospacedDigit().weight(.semibold))
 
-                    Text(model.movies.isEmpty ? L10n.text("home.no_matching_movies") : L10n.text("home.match_explanation"))
+                    Text(model.isContentLoading
+                         ? L10n.text("home.loading_content_detail")
+                         : (model.movies.isEmpty ? L10n.text("home.no_matching_movies") : L10n.text("home.match_explanation")))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

@@ -10,8 +10,6 @@
 		AA99AA99AA99AA99AA99AA99 /* HistoricalYearFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */; };
 		AA88AA88AA88AA88AA88AA88 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB88BB88BB88BB88BB88BB88 /* RootView.swift */; };
 		AA77AA77AA77AA77AA77AA77 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB77BB77BB77BB77BB77BB77 /* AppConfiguration.swift */; };
-		AA66AA66AA66AA66AA66AA66 /* ContentText_zh-Hans.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = BB66BB66BB66BB66BB66BB66 /* ContentText_zh-Hans.sqlite */; };
-		AA55AA55AA55AA55AA55AA55 /* ContentText_en.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = BB55BB55BB55BB55BB55BB55 /* ContentText_en.sqlite */; };
 		AA44AA44AA44AA44AA44AA44 /* MovieTextStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB44BB44BB44BB44BB44BB44 /* MovieTextStore.swift */; };
 		AA11AA11AA11AA11AA11AA11 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB11BB11BB11BB11BB11BB11 /* L10n.swift */; };
 		AA22AA22AA22AA22AA22AA22 /* GenreLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22BB22BB22BB22BB22BB22 /* GenreLocalization.swift */; };
@@ -28,6 +26,7 @@
 		C022A7C022A7C022A7C022A7 /* RegionalCapitalResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D022A7D022A7D022A7D022A7 /* RegionalCapitalResolver.swift */; };
 		546A149725638EAE0FD29399 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */; };
 		C7374887F0423BFB9474AB50 /* ContentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */; };
+		A715C0DE0000000000000001 /* StoryContentSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A715C0DE0000000000000002 /* StoryContentSyncService.swift */; };
 		7BDBE1CDFD06A2C50B4BE534 /* SQLiteSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */; };
 		9345AD4F8BC1A8C967EF87BA /* UserDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */; };
 		73AC59DC38C4BCAE90CB6A51 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4375501A72C9DE1B1CA7551 /* HomeView.swift */; };
@@ -42,7 +41,6 @@
 		B608C8D8F7A4E3AA93497B0B /* ImageDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1B7DEB9228E936CC8ABCDC /* ImageDownloadManager.swift */; };
 		208E9A9A576B2D68BA8ACC98 /* MapSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD9BD357F250E7699B3AFC7 /* MapSearchService.swift */; };
 		FE31D6C0EE53232F44E942C6 /* PurchaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */; };
-		129785BC76F0FF96E409F926 /* content_seed.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */; };
 		C8BB2EAD0B288DD9D1F913DA /* schema.sql in Resources */ = {isa = PBXBuildFile; fileRef = 56E2770C3F1E92C1A9D818D2 /* schema.sql */; };
 		1F02CD543269B745965B1FBD /* movie_1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 6E0CA765E78FB190A64087CE /* movie_1.jpg */; };
 		32E108AB09C749E4ABBE5965 /* movie_2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0710E25A3D578F8B7ACD32E4 /* movie_2.jpg */; };
@@ -61,8 +59,6 @@
 		BB99BB99BB99BB99BB99BB99 /* HistoricalYearFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalYearFormatter.swift; path = "ReelAtlas/Core/HistoricalYearFormatter.swift"; sourceTree = SOURCE_ROOT; };
 		BB88BB88BB88BB88BB88BB88 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = "ReelAtlas/App/RootView.swift"; sourceTree = SOURCE_ROOT; };
 		BB77BB77BB77BB77BB77BB77 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfiguration.swift; path = "ReelAtlas/App/AppConfiguration.swift"; sourceTree = SOURCE_ROOT; };
-		BB66BB66BB66BB66BB66BB66 /* ContentText_zh-Hans.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; name = ContentText_zh-Hans.sqlite; path = "ReelAtlas/Resources/ContentText_zh-Hans.sqlite"; sourceTree = SOURCE_ROOT; };
-		BB55BB55BB55BB55BB55BB55 /* ContentText_en.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; name = ContentText_en.sqlite; path = "ReelAtlas/Resources/ContentText_en.sqlite"; sourceTree = SOURCE_ROOT; };
 		BB44BB44BB44BB44BB44BB44 /* MovieTextStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieTextStore.swift; path = "ReelAtlas/Data/MovieTextStore.swift"; sourceTree = SOURCE_ROOT; };
 		BB11BB11BB11BB11BB11BB11 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = L10n.swift; path = "ReelAtlas/App/L10n.swift"; sourceTree = SOURCE_ROOT; };
 		BB22BB22BB22BB22BB22BB22 /* GenreLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GenreLocalization.swift; path = "ReelAtlas/App/GenreLocalization.swift"; sourceTree = SOURCE_ROOT; };
@@ -79,6 +75,7 @@
 		D022A7D022A7D022A7D022A7 /* RegionalCapitalResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegionalCapitalResolver.swift; path = "ReelAtlas/Core/RegionalCapitalResolver.swift"; sourceTree = SOURCE_ROOT; };
 		6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppModels.swift; path = "ReelAtlas/Data/AppModels.swift"; sourceTree = SOURCE_ROOT; };
 		0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentRepository.swift; path = "ReelAtlas/Data/ContentRepository.swift"; sourceTree = SOURCE_ROOT; };
+		A715C0DE0000000000000002 /* StoryContentSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryContentSyncService.swift; path = "ReelAtlas/Data/StoryContentSyncService.swift"; sourceTree = SOURCE_ROOT; };
 		DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SQLiteSupport.swift; path = "ReelAtlas/Data/SQLiteSupport.swift"; sourceTree = SOURCE_ROOT; };
 		1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UserDatabase.swift; path = "ReelAtlas/Data/UserDatabase.swift"; sourceTree = SOURCE_ROOT; };
 		B4375501A72C9DE1B1CA7551 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = "ReelAtlas/Features/Home/HomeView.swift"; sourceTree = SOURCE_ROOT; };
@@ -93,7 +90,6 @@
 		EE1B7DEB9228E936CC8ABCDC /* ImageDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImageDownloadManager.swift; path = "ReelAtlas/Services/ImageDownloadManager.swift"; sourceTree = SOURCE_ROOT; };
 		5CD9BD357F250E7699B3AFC7 /* MapSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapSearchService.swift; path = "ReelAtlas/Services/MapSearchService.swift"; sourceTree = SOURCE_ROOT; };
 		B92075C8DCAEF72D7F2A5A5F /* PurchaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PurchaseManager.swift; path = "ReelAtlas/Services/PurchaseManager.swift"; sourceTree = SOURCE_ROOT; };
-		D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; name = content_seed.sqlite; path = "ReelAtlas/Resources/content_seed.sqlite"; sourceTree = SOURCE_ROOT; };
 		56E2770C3F1E92C1A9D818D2 /* schema.sql */ = {isa = PBXFileReference; lastKnownFileType = text; name = schema.sql; path = "ReelAtlas/Resources/schema.sql"; sourceTree = SOURCE_ROOT; };
 		6E0CA765E78FB190A64087CE /* movie_1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = movie_1.jpg; path = "ReelAtlas/Resources/SmallPosters/movie_1.jpg"; sourceTree = SOURCE_ROOT; };
 		0710E25A3D578F8B7ACD32E4 /* movie_2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = movie_2.jpg; path = "ReelAtlas/Resources/SmallPosters/movie_2.jpg"; sourceTree = SOURCE_ROOT; };
@@ -132,6 +128,7 @@
 			D022A7D022A7D022A7D022A7 /* RegionalCapitalResolver.swift */,
 			6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */,
 			0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */,
+			A715C0DE0000000000000002 /* StoryContentSyncService.swift */,
 			BB44BB44BB44BB44BB44BB44 /* MovieTextStore.swift */,
 			DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */,
 			1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */,
@@ -150,9 +147,6 @@
 		); name = Sources; sourceTree = "<group>"; };
 		567F2FDE2E8D3E9A09D6C13B /* Resources */ = {isa = PBXGroup; children = (
 			A1C001000000000000000002 /* Assets.xcassets */,
-			D4ADDDC6EF210DD09BEFABB2 /* content_seed.sqlite */,
-			BB66BB66BB66BB66BB66BB66 /* ContentText_zh-Hans.sqlite */,
-			BB55BB55BB55BB55BB55BB55 /* ContentText_en.sqlite */,
 			BB33BB33BB33BB33BB33BB33 /* Localizable.xcstrings */,
 			56E2770C3F1E92C1A9D818D2 /* schema.sql */,
 			6E0CA765E78FB190A64087CE /* movie_1.jpg */,
@@ -180,9 +174,6 @@
 /* Begin PBXResourcesBuildPhase section */
 		8B0AD72DF5FB9B933D77B1AB /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
 			A1C001000000000000000001 /* Assets.xcassets in Resources */,
-			129785BC76F0FF96E409F926 /* content_seed.sqlite in Resources */,
-			AA66AA66AA66AA66AA66AA66 /* ContentText_zh-Hans.sqlite in Resources */,
-			AA55AA55AA55AA55AA55AA55 /* ContentText_en.sqlite in Resources */,
 			AA33AA33AA33AA33AA33AA33 /* Localizable.xcstrings in Resources */,
 			C8BB2EAD0B288DD9D1F913DA /* schema.sql in Resources */,
 			1F02CD543269B745965B1FBD /* movie_1.jpg in Resources */,
@@ -217,6 +208,7 @@
 			C022A7C022A7C022A7C022A7 /* RegionalCapitalResolver.swift in Sources */,
 			546A149725638EAE0FD29399 /* AppModels.swift in Sources */,
 			C7374887F0423BFB9474AB50 /* ContentRepository.swift in Sources */,
+			A715C0DE0000000000000001 /* StoryContentSyncService.swift in Sources */,
 			AA44AA44AA44AA44AA44AA44 /* MovieTextStore.swift in Sources */,
 			7BDBE1CDFD06A2C50B4BE534 /* SQLiteSupport.swift in Sources */,
 			9345AD4F8BC1A8C967EF87BA /* UserDatabase.swift in Sources */,
@@ -238,8 +230,8 @@
 /* Begin XCBuildConfiguration section */
 		BFD315016DE16320F7E2120C /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; ONLY_ACTIVE_ARCH = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
 		1D8C0C6B1D22EA8C7669B263 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
-		75BB3D5A44EA88B6630AB580 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 4; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
-		78E9FF212122B0C0397A6DB4 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 4; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+		75BB3D5A44EA88B6630AB580 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
+		78E9FF212122B0C0397A6DB4 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 5; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */

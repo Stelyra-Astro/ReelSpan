@@ -31,25 +31,24 @@ The generation environment does not contain Xcode/MapKit, so the final native ta
 
 The Release build checks a StoreKit 2 non-consumable entitlement before allowing access. Debug builds bypass the gate so the project can be tested before App Store Connect is configured. Restore Purchase is included in both the paywall and Settings.
 
-## Local databases
-The project deliberately separates replaceable content data from user data.
+## Supabase content and local cache
+The project separates server-owned story content from runtime user data.
 
-### `content_seed.sqlite`
-Core database imported from the current regional CSV package, containing:
+### Story content
+`Data/content_seed.sqlite` is the canonical ETL output used by
+`Scripts/upload_story_content.py`. The upload populates the `story_*` tables in
+the ReelSpan Supabase project. The app bundle contains no content database.
+
+At launch, the app reads `dataset_meta`, downloads the current `story_*` rows
+when the version changes, and atomically rebuilds
+`Application Support/ReelAtlas/content.sqlite` as an offline cache containing:
 - all fields from `target.csv`, `movies.csv`, `movie_target_matches.csv`, `movie_locations.csv`, `movie_periods.csv`, `places.csv`, and `normalization_issues.csv`,
 - unmodified JSON payloads and all movie/place/administrative QIDs,
 - target-scoped movie-location rows so `is_target_match` retains its regional meaning,
 - unique movie-to-target matches and independent story-period ranges.
 
-### `ContentText_en.sqlite`
-English movie title/overview language pack.
-
-### `ContentText_zh-Hans.sqlite`
-Simplified-Chinese movie title/overview language pack.
-
-The app also checks `Application Support/ReelAtlas/Languages/ContentText_<language>.sqlite` first. That allows later downloadable language packs without changing the core content schema.
-
-Movie labels now come directly from each CSV `labels_json` value. Resolution uses the selected/system language and then English.
+TMDB-owned title, poster, overview, cast, and director data are not stored in
+the `story_*` tables. They remain the responsibility of the TMDB metadata path.
 
 Map labels remain controlled by Apple Maps and the system locale.
 
@@ -67,8 +66,9 @@ UI copy uses `ReelAtlas/Resources/Localizable.xcstrings` and follows the iPhone 
 
 ## CSV import files
 - `Data/schema.sql` — schema for the current CSV fields.
-- `Data/content_seed.sqlite` — canonical imported database.
+- `Data/content_seed.sqlite` — canonical local ETL output; not an app resource.
 - `Scripts/import_csv.py` — repeatable ZIP/directory importer.
+- `Scripts/upload_story_content.py` — idempotent Supabase uploader.
 - `docs/DATA_PIPELINE.md` — merge, validation, and runtime-query contract.
 
 The legacy language-pack and sample JSON fixtures are not inputs to the current import.

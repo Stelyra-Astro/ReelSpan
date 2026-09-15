@@ -671,6 +671,38 @@
         }
       }
     },
+    "home.loading_content": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading story map"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在载入故事地图"
+          }
+        }
+      }
+    },
+    "home.loading_content_detail": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading the latest location index…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载最新地点索引…"
+          }
+        }
+      }
+    },
     "home.no_matching_movies": {
       "localizations": {
         "en": {
