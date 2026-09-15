@@ -1,5 +1,5 @@
 import Foundation
-import Observation
+import Combine
 
 /// Owns list permits. Detail consumers suspend admission, but leave running work intact.
 @MainActor
@@ -74,16 +74,16 @@ public enum MovieMetadataState: Equatable, Sendable {
     }
 }
 
-@MainActor @Observable
-public final class MovieMetadataStore {
+@MainActor
+public final class MovieMetadataStore: ObservableObject {
     public let service: MovieMetadataService
-    private var states: [Int: MovieMetadataState] = [:]
-    @ObservationIgnored private let scheduler: MovieRequestScheduler
-    @ObservationIgnored private let rowDwell: Duration
-    @ObservationIgnored private var visible: [Int: Int] = [:]
-    @ObservationIgnored private var details: [Int: Int] = [:]
-    @ObservationIgnored private var tasks: [Int: Task<Void, Never>] = [:]
-    @ObservationIgnored private var generations: [Int: UUID] = [:]
+    @Published private var states: [Int: MovieMetadataState] = [:]
+    private let scheduler: MovieRequestScheduler
+    private let rowDwell: Duration
+    private var visible: [Int: Int] = [:]
+    private var details: [Int: Int] = [:]
+    private var tasks: [Int: Task<Void, Never>] = [:]
+    private var generations: [Int: UUID] = [:]
 
     public init(service: MovieMetadataService = MovieMetadataService(), rowDwell: Duration = .seconds(1)) {
         self.service = service

@@ -27,10 +27,14 @@ final class AppModel: ObservableObject {
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
     private var cloudBackupTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         interfaceLanguagePreference = UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "system"
         iCloudBackupEnabled = UserDefaults.standard.object(forKey: "iCloudBackupEnabled") as? Bool ?? true
+        metadataStore.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         do {
             content = try ContentRepository()
             users = try UserDatabase()
