@@ -4,6 +4,7 @@
 
 ## 当前状态
 
+- 本机已有 `codex/dynamic-metadata` 分支，包含动态元数据、原生详情页、Tip 和 15 条分页相关提交，但尚未与当前 Supabase 内容同步分支集成；Build 5 来自当前 `main`，因此没有包含这些功能。
 - 当前分支已开始把故事地点数据从 App 内置 SQLite 迁移到 Supabase，并在设备端重建离线缓存。
 - 首启同步已限制到 `story_movie_target_matches` 中真正发布的电影，避免下载全部候选数据；内容就绪前不再把经纬度显示成地点名。
 - 当前版本的电影元数据链路尚未接回 UI：`story_movies` 只提供 Wikidata QID、legacy ID、TMDB ID 和 IMDb ID，因此列表会暂时显示 `Q…`、`Genre pending` 等占位内容。
@@ -14,6 +15,7 @@
 
 ## P0 — 恢复核心体验
 
+- [ ] 将 `codex/dynamic-metadata` 与当前 Supabase 内容同步分支合并，逐项解决冲突并重新执行完整验收；不要直接丢弃任一分支。
 - [ ] 接入 `reelspan-tmdb.xiaoguiwk.workers.dev` 的电影详情接口，通过 `tmdb_id` 获取标题、年份、时长、类型、简介、导演、演员、评分和图片 URL；不再把 Wikidata QID 当作电影标题。
 - [ ] 列表首屏只展示 15 部电影；滑动到底部后每次继续加载 15 部，保持稳定排序并避免重复请求。
 - [ ] 点击电影列表进入 App 内原生 `MovieDetailView`，不再直接跳转 IMDb。
