@@ -1743,6 +1743,22 @@
         }
       }
     },
+    "settings.clear_movie_cache": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Movie Cache"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除电影缓存"
+          }
+        }
+      }
+    },
     "settings.download_backdrops": {
       "localizations": {
         "en": {
@@ -2084,13 +2100,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Content and user data are stored separately so movie-database updates cannot overwrite favorites. Detailed data-management controls are reserved for a later version."
+            "value": "Clears downloaded movie details and artwork only. Story locations, story times, and favorites are kept."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "内容数据与用户数据分开保存，因此更新电影数据库不会覆盖收藏。更完整的数据管理功能预留到后续版本。"
+            "value": "只清除已下载的电影资料和图片；故事地点、故事年代和收藏都会保留。"
           }
         }
       }

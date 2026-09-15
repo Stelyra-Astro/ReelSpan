@@ -134,18 +134,11 @@ actor StoryContentSyncService {
         ) { row in
             let qid = self.requiredString(row, "movie_qid")
             try self.insert(database, """
-            INSERT INTO movies(
-              movie_qid,id,title_en,title_zh,labels_json,director_qids_json,
-              directors_json,origin_country_qids_json,origin_countries_json,
-              genre_qids_json,genres_json,original_language_qids_json,
-              original_languages_json,imdb_id,tmdb_movie_id,period_qids_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO movies(movie_qid,id,imdb_id,tmdb_movie_id)
+            VALUES(?,?,?,?)
             """, [
                 .text(qid), .int(self.requiredInt(row, "legacy_id")),
-                .text(qid), .text(qid), .text("{}"), .text("[]"), .text("[]"),
-                .text("[]"), .text("[]"), .text("[]"), .text("[]"),
-                .text("[]"), .text("[]"), self.optionalText(row["imdb_id"]),
-                self.optionalInt(row["tmdb_id"]), .text("[]")
+                self.optionalText(row["imdb_id"]), self.optionalInt(row["tmdb_id"])
             ])
         }
     }

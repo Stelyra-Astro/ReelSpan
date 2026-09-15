@@ -1,12 +1,18 @@
 import SwiftUI
 
 struct MovieRowView: View {
-    private let movie: MovieViewData
+    @EnvironmentObject private var model: AppModel
+    private let originalMovie: MovieViewData
+    private var movie: MovieViewData {
+        guard let id = originalMovie.tmdbID,
+              let metadata = model.metadataStore.metadataState(for: id).metadata else { return originalMovie }
+        return originalMovie.enriching(with: metadata)
+    }
     let isFavorite: Bool
     let onFavorite: () -> Void
 
     init(movie: MovieViewData, isFavorite: Bool, onFavorite: @escaping () -> Void) {
-        self.movie = movie
+        self.originalMovie = movie
         self.isFavorite = isFavorite
         self.onFavorite = onFavorite
     }
@@ -55,6 +61,8 @@ struct MovieRowView: View {
         }
         .padding(.vertical, 9)
         .contentShape(Rectangle())
+        .onAppear { if let id = originalMovie.tmdbID { model.metadataStore.beginVisible(id) } }
+        .onDisappear { if let id = originalMovie.tmdbID { model.metadataStore.endVisible(id) } }
     }
 }
 

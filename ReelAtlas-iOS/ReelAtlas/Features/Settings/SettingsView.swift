@@ -72,6 +72,21 @@ private struct SettingsContent: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("settings.section.local_data") {
+                Button("settings.clear_movie_cache", role: .destructive) {
+                    Task {
+                        do {
+                            try await model.metadataStore.clearCache()
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    }
+                }
+                Text("settings.local_data.note")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("settings.section.privacy_legal") {
                 pageRow(.privacy)
                 pageRow(.terms)

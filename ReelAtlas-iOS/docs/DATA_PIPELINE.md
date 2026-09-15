@@ -12,7 +12,9 @@ The import uses only the supplied regional copies of:
 - `places.csv`
 - `normalization_issues.csv`
 
-It does not query Wikidata, TMDB, or any other external source. Headers must exactly match the fields declared by the current schema. JSON values are validated and stored unchanged as SQLite `TEXT`.
+The importer itself does not query external services. Headers must match the upstream export contract and JSON values are validated. Movie metadata fields are deliberately discarded; only `id`, `movie_qid`, `imdb_id`, and `tmdb_movie_id` are persisted in `movies`.
+
+Missing `tmdb_movie_id` values can be backfilled separately with `Scripts/backfill_tmdb_ids.py`. That tool queries only the Wikidata item's `P4947`, accepts a single positive integer, and writes a resumable checkpoint and audit report. It never guesses by title.
 
 ## Regional merge rules
 
@@ -26,10 +28,9 @@ Each non-empty regional directory contains one `target.csv` row. `movies`, `plac
 
 ## Runtime queries
 
-The uploader maps these tables to Supabase `story_*` tables without changing
-the existing `public.movies` TMDB cache. The app checks `dataset_meta`, then
-rebuilds a local SQLite cache from the public read-only Data API. Map and time
-queries continue to run against that offline cache.
+`Scripts/upload_story_content.py` publishes the imported story tables plus a dataset version to Supabase. On first launch, or when that version changes, the app rebuilds `Application Support/ReelAtlas/content.sqlite` from those tables. Normal launches query that offline SQLite cache: indexed targets from `targets`, movie filtering through `movie_target_matches`, story years through `movie_periods`, and narrative places through `movie_locations`.
+
+Movie metadata is separate from the story dataset. `MovieMetadataService` fetches title, poster, year, runtime, genres, overview, rating, director, and cast from the configured Cloudflare Worker and caches successful responses locally after use.
 
 ## Import command
 

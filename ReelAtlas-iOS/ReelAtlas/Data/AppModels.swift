@@ -61,27 +61,27 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
     let locations: [StoryLocation]
     let cast: [MovieCastMember]
 
-    func enriching(with details: TMDBMovieDetails) -> MovieViewData {
+    func enriching(with details: MovieMetadata) -> MovieViewData {
         MovieViewData(
             id: id, movieQID: movieQID, imdbID: imdbID, tmdbID: tmdbID,
             title: details.title.isEmpty ? title : details.title,
-            overview: details.overview.isEmpty ? overview : details.overview,
-            tagline: details.tagline.isEmpty ? tagline : details.tagline,
-            overviewSource: overviewSource, overviewSourceTitle: overviewSourceTitle,
-            overviewSourceURL: overviewSourceURL, overviewLicense: overviewLicense,
-            releaseDate: details.releaseDate ?? releaseDate,
-            releaseYear: Int(details.releaseDate?.prefix(4) ?? "") ?? releaseYear,
-            runtimeMinutes: details.runtime ?? runtimeMinutes,
-            sourceImage: sourceImage,
-            originalLanguage: details.originalLanguage.isEmpty ? originalLanguage : details.originalLanguage,
-            rating: details.voteAverage, voteCount: details.voteCount, rankingScore: rankingScore,
-            smallPosterFilename: smallPosterFilename,
+            overview: details.overview,
+            tagline: details.tagline,
+            overviewSource: "", overviewSourceTitle: "",
+            overviewSourceURL: "", overviewLicense: "",
+            releaseDate: details.releaseDate,
+            releaseYear: Int(details.releaseDate?.prefix(4) ?? ""),
+            runtimeMinutes: details.runtime,
+            sourceImage: nil,
+            originalLanguage: details.originalLanguage,
+            rating: details.rating, voteCount: details.voteCount, rankingScore: rankingScore,
+            smallPosterFilename: nil,
             largePosterURL: details.posterURL?.absoluteString,
-            backdropURL: details.backdropURL?.absoluteString,
-            director: details.directors.isEmpty ? director : details.directors.joined(separator: " · "),
-            originCountries: details.productionCountries.isEmpty ? originCountries : details.productionCountries.map(\.name),
+            backdropURL: MovieMetadataImageURLs.backdrop(path: details.backdropPath)?.absoluteString,
+            director: details.directors.isEmpty ? nil : details.directors.map(\.name).joined(separator: " · "),
+            originCountries: [],
             isDocumentary: details.genres.contains { $0.name.localizedCaseInsensitiveContains("documentary") },
-            genres: details.genres.isEmpty ? genres : details.genres.map(\.name),
+            genres: details.genres.map(\.name),
             timeRanges: timeRanges, locations: locations,
             cast: details.cast.prefix(20).map {
                 MovieCastMember(
@@ -89,6 +89,20 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
                     profileURL: $0.profileURL?.absoluteString, sortOrder: $0.order
                 )
             }
+        )
+    }
+
+    /// Search-only movies use a temporary negative identity and cannot be favorited.
+    static func searchResult(_ item: MovieSearchItem, local: MovieViewData?) -> MovieViewData {
+        MovieViewData(
+            id: local?.id ?? -item.id, movieQID: local?.movieQID ?? "", imdbID: local?.imdbID, tmdbID: item.id,
+            title: item.title, overview: item.overview, tagline: "", overviewSource: "", overviewSourceTitle: "",
+            overviewSourceURL: "", overviewLicense: "", releaseDate: item.releaseDate,
+            releaseYear: item.releaseDate.flatMap { Int($0.prefix(4)) }, runtimeMinutes: nil, sourceImage: nil,
+            originalLanguage: "", rating: item.rating, voteCount: item.voteCount, rankingScore: local?.rankingScore ?? 0,
+            smallPosterFilename: nil, largePosterURL: item.posterURL?.absoluteString, backdropURL: nil,
+            director: nil, originCountries: [], isDocumentary: false, genres: [],
+            timeRanges: local?.timeRanges ?? [], locations: local?.locations ?? [], cast: []
         )
     }
 
@@ -120,11 +134,9 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
     }
 }
 
-struct MovieSearchResult {
+struct MoviePage: Sendable {
     let movies: [MovieViewData]
-    let requestedLocation: LocationRecord
-    let matchedLocation: LocationRecord
-    let fallbackDepth: Int
+    let hasMore: Bool
 
-    var didFallback: Bool { fallbackDepth > 0 }
+    static let empty = MoviePage(movies: [], hasMore: false)
 }

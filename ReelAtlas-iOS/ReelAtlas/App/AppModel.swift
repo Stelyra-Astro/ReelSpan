@@ -17,39 +17,48 @@ final class AppModel: ObservableObject {
     @Published var databaseVersion = "Unknown"
     @Published var isSearching = false
     @Published private(set) var isContentLoading = true
+    @Published private(set) var isLoadingMovies = false
+    @Published private(set) var hasMoreMovies = false
     @Published var iCloudBackupEnabled: Bool
 
-    let imageManager = ImageDownloadManager()
+    let metadataStore = MovieMetadataStore()
+    let tipManager = TipPurchaseManager()
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
-    private let movieSearchWorker = MovieSearchWorker()
     private let contentSync = StoryContentSyncService()
+    private let searchData = SearchDataWorker()
+    private let moviePages = MoviePageWorker()
     private var users: UserDatabase?
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
     private var pendingInitialCoordinate: CLLocationCoordinate2D?
     private var contentBootstrapGate = ContentBootstrapGate()
     private var cloudBackupTask: Task<Void, Never>?
+    private var moviePageTask: Task<Void, Never>?
+    private var moviePageGeneration = UUID()
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         interfaceLanguagePreference = UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "system"
         iCloudBackupEnabled = UserDefaults.standard.object(forKey: "iCloudBackupEnabled") as? Bool ?? true
+        metadataStore.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         do {
             users = try UserDatabase()
             favoriteIDs = users?.favoriteIDs() ?? []
         } catch {
             errorMessage = error.localizedDescription
         }
-        imageManager.onCacheChanged = { [weak self] in self?.scheduleICloudBackup() }
         Task { [weak self] in await self?.loadStoryContent() }
     }
 
     private func loadStoryContent() async {
-        defer { isContentLoading = false }
         do {
             let databaseURL = try await contentSync.ensureCurrentContent()
             content = try ContentRepository(databaseURL: databaseURL)
             databaseVersion = content?.databaseVersion() ?? "Unknown"
+            isContentLoading = false
             if contentBootstrapGate.markContentReady() {
                 await resolvePendingInitialLocation()
             } else {
@@ -57,6 +66,7 @@ final class AppModel: ObservableObject {
             }
             if iCloudBackupEnabled { await restoreICloudBackup() }
         } catch {
+            isContentLoading = false
             errorMessage = error.localizedDescription
         }
     }
@@ -70,10 +80,6 @@ final class AppModel: ObservableObject {
             preference: interfaceLanguagePreference,
             systemLanguages: Locale.preferredLanguages
         )
-    }
-
-    var allMoviesForDownloads: [MovieViewData] {
-        content?.allMovies(preferredLanguage: effectiveLanguage) ?? []
     }
 
     var favoriteMovies: [MovieViewData] {
@@ -128,6 +134,7 @@ final class AppModel: ObservableObject {
     }
 
     func toggleFavorite(_ movieID: Int) {
+        guard movieID > 0 else { return }
         let next = !favoriteIDs.contains(movieID)
         users?.setFavorite(movieID: movieID, isFavorite: next)
         if next { favoriteIDs.insert(movieID) } else { favoriteIDs.remove(movieID) }
@@ -149,14 +156,12 @@ final class AppModel: ObservableObject {
             interfaceLanguage: interfaceLanguagePreference,
             updatedAt: Date()
         )
-        await iCloudBackup.backup(manifest, localCacheDirectory: imageManager.cacheDirectoryForBackup)
+        await iCloudBackup.backup(manifest)
     }
 
     private func restoreICloudBackup() async {
         guard iCloudBackupEnabled, let content else { return }
-        guard let manifest = await iCloudBackup.restore(
-            localCacheDirectory: imageManager.cacheDirectoryForBackup
-        ) else { return }
+        guard let manifest = await iCloudBackup.restore() else { return }
         let restoredIDs = content.movieIDs(qids: manifest.favoriteMovieQIDs)
         favoriteIDs = restoredIDs
         users?.replaceFavorites(with: restoredIDs)
@@ -164,7 +169,6 @@ final class AppModel: ObservableObject {
             interfaceLanguagePreference = manifest.interfaceLanguage
             UserDefaults.standard.set(manifest.interfaceLanguage, forKey: "interfaceLanguage")
         }
-        imageManager.refreshCacheSize()
         reload()
     }
 
@@ -181,39 +185,17 @@ final class AppModel: ObservableObject {
         await resolveSelection { try await MapSearchService.resolve(suggestion) }
     }
 
-    func indexedPlaceSuggestions(_ query: String) -> [MapSearchSuggestion] {
-        guard let content else { return [] }
-        return content.administrativeLocationMatches(query: query, preferredLanguage: effectiveLanguage).compactMap { location in
-            guard let coordinate = location.coordinate else { return nil }
-            var names = [location.name]
-            var countryName: String? = location.type == "country" ? location.name : nil
-            var parentID = location.parentID
-            var visited = Set([location.id])
-            while let id = parentID, !visited.contains(id), let parent = content.location(id: id, preferredLanguage: effectiveLanguage) {
-                visited.insert(id)
-                names.append(parent.name)
-                if parent.type == "country" { countryName = parent.name }
-                parentID = parent.parentID
-            }
-            let selection = MapSearchSelection(
-                displayName: location.name,
-                coordinate: coordinate,
-                candidateDatabaseNames: names,
-                countryFallbackName: countryName
-            )
-            return MapSearchSuggestion(
-                title: location.name,
-                subtitle: names.dropFirst().joined(separator: " · "),
-                selection: selection
-            )
+    func indexedPlaceSuggestions(_ query: String) async -> [MapSearchSuggestion] {
+        await searchData.places(query: query, language: effectiveLanguage).map { value in
+            MapSearchSuggestion(title: value.name, subtitle: value.names.dropFirst().joined(separator: " · "), selection:
+                MapSearchSelection(displayName: value.name,
+                    coordinate: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude),
+                    candidateDatabaseNames: value.names, countryFallbackName: value.country))
         }
     }
 
-    func movieSuggestions(_ query: String) async -> [MovieViewData] {
-        await movieSearchWorker.suggestions(
-            query: query,
-            preferredLanguage: effectiveLanguage
-        )
+    func searchMovies(_ items: [MovieSearchItem]) async -> [MovieViewData] {
+        await searchData.movies(items, language: effectiveLanguage)
     }
 
     func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D, reportErrors: Bool = true) async {
@@ -252,7 +234,7 @@ final class AppModel: ObservableObject {
                 selectedLocation = nil
                 displayedPlaceName = selection.countryFallbackName ?? selection.displayName
                 if reportErrors { errorMessage = L10n.text("home.location_not_indexed") }
-                movies = []
+                clearMovies()
                 fallbackMessage = nil
                 return
             }
@@ -278,7 +260,7 @@ final class AppModel: ObservableObject {
         ) else {
             selectedLocation = nil
             displayedPlaceName = String(format: "%.3f, %.3f", coordinate.latitude, coordinate.longitude)
-            movies = []
+            clearMovies()
             return
         }
         guard !Task.isCancelled else { return }
@@ -288,21 +270,45 @@ final class AppModel: ObservableObject {
     }
 
     func reload() {
-        guard let content, let requested = selectedLocation else { return }
-        let result = content.search(
-            startYear: storyTimeSelection.startYear,
-            endYear: storyTimeSelection.endYear,
-            requestedLocation: requested,
-            preferredLanguage: effectiveLanguage,
-            favoritesOnly: favoritesOnly,
-            favoriteIDs: favoriteIDs
-        )
-        movies = result.movies
-        if result.didFallback {
-            let range = "\(L10n.year(storyTimeSelection.startYear))–\(L10n.year(storyTimeSelection.endYear))"
-            fallbackMessage = L10n.format("home.fallback_message", result.requestedLocation.name, range, result.matchedLocation.name)
-        } else if fallbackMessage?.contains(result.requestedLocation.name) != true {
-            fallbackMessage = nil
+        clearMovies()
+        hasMoreMovies = selectedLocation != nil
+        loadMoreMovies()
+    }
+
+    private func clearMovies() {
+        moviePageTask?.cancel()
+        moviePageGeneration = UUID()
+        movies = []
+        isLoadingMovies = false
+        hasMoreMovies = false
+    }
+
+    func loadMoreMovies() {
+        guard !isLoadingMovies, hasMoreMovies, let requested = selectedLocation else { return }
+        isLoadingMovies = true
+        let generation = moviePageGeneration
+        let offset = movies.count
+        let startYear = storyTimeSelection.startYear
+        let endYear = storyTimeSelection.endYear
+        let language = effectiveLanguage
+        let favoritesOnly = favoritesOnly
+        let favoriteIDs = favoriteIDs
+        let targetQID = requested.targetQID
+        moviePageTask = Task { [weak self] in
+            guard let self else { return }
+            let page = await moviePages.page(
+                startYear: startYear,
+                endYear: endYear,
+                targetQID: targetQID,
+                language: language,
+                favoritesOnly: favoritesOnly,
+                favoriteIDs: favoriteIDs,
+                offset: offset
+            )
+            guard !Task.isCancelled, moviePageGeneration == generation else { return }
+            movies.append(contentsOf: page.movies)
+            hasMoreMovies = page.hasMore
+            isLoadingMovies = false
         }
     }
 
@@ -310,7 +316,7 @@ final class AppModel: ObservableObject {
         let regionCode = Locale.current.region?.identifier
         guard let capital = RegionalCapitalResolver.capital(forRegionCode: regionCode) else {
             selectedLocation = nil
-            movies = []
+            clearMovies()
             return
         }
 
@@ -321,7 +327,78 @@ final class AppModel: ObservableObject {
             preferredLanguage: effectiveLanguage
         )
         displayedPlaceName = selectedLocation?.name ?? capital.name
-        if selectedLocation != nil { reload() } else { movies = [] }
+        if selectedLocation != nil { reload() } else { clearMovies() }
+    }
+}
+
+private actor MoviePageWorker {
+    private var content: ContentRepository?
+
+    private func repository() -> ContentRepository? {
+        if content == nil { content = try? ContentRepository() }
+        return content
+    }
+
+    func page(
+        startYear: Int,
+        endYear: Int,
+        targetQID: String,
+        language: String,
+        favoritesOnly: Bool,
+        favoriteIDs: Set<Int>,
+        offset: Int
+    ) -> MoviePage {
+        guard !Task.isCancelled, let content = repository() else { return .empty }
+        return content.searchPage(
+            startYear: startYear,
+            endYear: endYear,
+            targetQID: targetQID,
+            preferredLanguage: language,
+            favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs,
+            offset: offset
+        )
+    }
+}
+
+/// SQLite work stays off the main actor and never runs from a SwiftUI body.
+private actor SearchDataWorker {
+    private var content: ContentRepository?
+    private func repository() -> ContentRepository? {
+        if content == nil { content = try? ContentRepository() }
+        return content
+    }
+    struct Place: Sendable {
+        let name: String
+        let latitude: Double
+        let longitude: Double
+        let names: [String]
+        let country: String?
+    }
+    func places(query: String, language: String) -> [Place] {
+        guard !Task.isCancelled, query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2,
+              let content = repository() else { return [] }
+        return content.administrativeLocationMatches(query: query, preferredLanguage: language).compactMap { location in
+            guard !Task.isCancelled, let latitude = location.latitude, let longitude = location.longitude else { return nil }
+            var names = [location.name]
+            var country: String? = location.type == "country" ? location.name : nil
+            var parentID = location.parentID
+            var visited = Set([location.id])
+            while let id = parentID, !visited.contains(id), let parent = content.location(id: id, preferredLanguage: language) {
+                visited.insert(id)
+                names.append(parent.name)
+                if parent.type == "country" { country = parent.name }
+                parentID = parent.parentID
+            }
+            return Place(name: location.name, latitude: latitude, longitude: longitude, names: names, country: country)
+        }
+    }
+    func movies(_ items: [MovieSearchItem], language: String) -> [MovieViewData] {
+        let content = repository()
+        return items.compactMap { item in
+            guard !Task.isCancelled else { return nil }
+            return MovieViewData.searchResult(item, local: content?.movie(tmdbID: item.id, preferredLanguage: language))
+        }
     }
 }
 

@@ -3,15 +3,31 @@ import SwiftUI
 struct MovieDetailView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    private let movie: MovieViewData
+    private let originalMovie: MovieViewData
+    private var movie: MovieViewData {
+        guard let id = originalMovie.tmdbID,
+              let metadata = model.metadataStore.metadataState(for: id).metadata else { return originalMovie }
+        return originalMovie.enriching(with: metadata)
+    }
 
-    init(movie: MovieViewData) { self.movie = movie }
+    init(movie: MovieViewData) { self.originalMovie = movie }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
                     heroAndSummary
+
+                    if let id = originalMovie.tmdbID {
+                        switch model.metadataStore.metadataState(for: id) {
+                        case .idle, .loading:
+                            ProgressView("Loading movie details…").font(.caption).padding(8)
+                        case .failed:
+                            Text("Movie details are temporarily unavailable. Story information is still available.")
+                                .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
+                        case .loaded: EmptyView()
+                        }
+                    }
 
                     FlowTags(tags: movie.genres.isEmpty
                         ? [L10n.text("movie.genre.unknown")]
@@ -55,6 +71,18 @@ struct MovieDetailView: View {
                             .foregroundStyle(movie.director == nil ? .secondary : .primary)
                     }
 
+                    detailSection("Cast") {
+                        if movie.cast.isEmpty {
+                            Text("—").foregroundStyle(.secondary)
+                        } else {
+                            ScrollView(.horizontal) {
+                                LazyHStack(alignment: .top, spacing: 12) {
+                                    ForEach(movie.cast) { CastMemberCard(member: $0) }
+                                }
+                            }
+                        }
+                    }
+
                     detailSection(L10n.text("movie.details"), showsDivider: false) {
                         VStack(alignment: .leading, spacing: 10) {
                             detailLine(L10n.text("movie.release"), movie.releaseDate ?? movie.releaseYearText)
@@ -80,6 +108,8 @@ struct MovieDetailView: View {
                 }
             }
         }
+        .onAppear { if let id = originalMovie.tmdbID { model.metadataStore.beginDetail(id) } }
+        .onDisappear { if let id = originalMovie.tmdbID { model.metadataStore.endDetail(id) } }
     }
 
     private var heroAndSummary: some View {
@@ -107,6 +137,12 @@ struct MovieDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .disabled(movie.id <= 0)
+
+                Link(destination: movie.imdbURL) {
+                    Label("IMDb", systemImage: "arrow.up.right.square")
+                }
+                .font(.caption)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -116,7 +152,7 @@ struct MovieDetailView: View {
     }
 
     private var poster: some View {
-        LocalPosterView(movie: movie, cornerRadius: 14)
+        LocalPosterView(movie: movie, cornerRadius: 14, isDetail: true)
     }
 
     private func detailSection<Content: View>(
@@ -195,13 +231,7 @@ private struct CastMemberCard: View {
     @ViewBuilder
     private var avatar: some View {
         if let value = member.profileURL, let url = URL(string: value) {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    avatarPlaceholder
-                }
-            }
+            CachedMovieImage(url: url, symbol: "person.fill")
         } else {
             avatarPlaceholder
         }
@@ -216,6 +246,63 @@ private struct CastMemberCard: View {
             )
             Image(systemName: "person.fill")
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct TipSheet: View {
+    @ObservedObject var manager: TipPurchaseManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var quantity = 1
+    @State private var custom = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Support ReelSpan with a voluntary tip. Tips do not unlock any features.")
+                    if manager.state == .loading { ProgressView() }
+                    if manager.product != nil {
+                        HStack {
+                            ForEach([1, 3, 5], id: \.self) { value in
+                                Button(manager.amount(quantity: value)) { quantity = value; custom = false }
+                                    .buttonStyle(.bordered)
+                                    .tint(!custom && quantity == value ? .accentColor : .secondary)
+                            }
+                        }
+                        Toggle("Custom amount", isOn: $custom)
+                        if custom {
+                            Stepper("\(quantity) × \(manager.amount(quantity: 1))", value: $quantity, in: 1...10)
+                        }
+                        Button("Send \(manager.amount(quantity: quantity)) tip") {
+                            Task { await manager.purchase(quantity: quantity) }
+                        }
+                        .disabled(manager.state.isBusy || manager.state == .pending)
+                    }
+                    Text(statusText).font(.caption).foregroundStyle(.secondary)
+                    if manager.product == nil && !manager.state.isBusy {
+                        Button("Try again") { Task { await manager.load() } }
+                    }
+                }
+            }
+            .navigationTitle("Tip ReelSpan")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+        .task { await manager.load() }
+        .interactiveDismissDisabled(manager.state == .purchasing)
+    }
+
+    private var statusText: String {
+        switch manager.state {
+        case .unavailable: "Tips are currently unavailable in the App Store."
+        case .loading: "Loading App Store prices…"
+        case .ready: "Payment is handled by Apple."
+        case .purchasing: "Waiting for Apple…"
+        case .verified: "Thank you for supporting ReelSpan!"
+        case .pending: "Your tip is awaiting approval."
+        case .cancelled: "Payment was cancelled."
+        case .unverified: "The App Store payment could not be verified."
+        case .failed(let message): message
         }
     }
 }

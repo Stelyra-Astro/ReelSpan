@@ -1,0 +1,158 @@
+{
+  "added": 57,
+  "conflicts": [
+    "Q1131225",
+    "Q1308120",
+    "Q163904",
+    "Q2118360",
+    "Q2580194",
+    "Q26157345",
+    "Q30766048",
+    "Q3415590",
+    "Q3830855",
+    "Q3830858",
+    "Q3830859",
+    "Q3830861",
+    "Q3830864",
+    "Q471214",
+    "Q625770",
+    "Q673277",
+    "Q89420369",
+    "Q89420370"
+  ],
+  "duplicateTMDBMappings": [
+    {
+      "internalIDs": [
+        16819,
+        30863
+      ],
+      "movieQIDs": [
+        "Q182692",
+        "Q3620669"
+      ],
+      "tmdbMovieID": 28
+    },
+    {
+      "internalIDs": [
+        1558,
+        3442
+      ],
+      "movieQIDs": [
+        "Q158069",
+        "Q63434888"
+      ],
+      "tmdbMovieID": 677
+    },
+    {
+      "internalIDs": [
+        23100,
+        49289
+      ],
+      "movieQIDs": [
+        "Q2524411",
+        "Q8870066"
+      ],
+      "tmdbMovieID": 66560
+    },
+    {
+      "internalIDs": [
+        23375,
+        47232
+      ],
+      "movieQIDs": [
+        "Q25470755",
+        "Q7766155"
+      ],
+      "tmdbMovieID": 81468
+    },
+    {
+      "internalIDs": [
+        21492,
+        46293
+      ],
+      "movieQIDs": [
+        "Q2262966",
+        "Q7719592"
+      ],
+      "tmdbMovieID": 102222
+    },
+    {
+      "internalIDs": [
+        2061,
+        2374
+      ],
+      "movieQIDs": [
+        "Q21001632",
+        "Q2690472"
+      ],
+      "tmdbMovieID": 117691
+    },
+    {
+      "internalIDs": [
+        11289,
+        12975
+      ],
+      "movieQIDs": [
+        "Q139737641",
+        "Q1561870"
+      ],
+      "tmdbMovieID": 455450
+    },
+    {
+      "internalIDs": [
+        8283,
+        48379
+      ],
+      "movieQIDs": [
+        "Q12135885",
+        "Q8058498"
+      ],
+      "tmdbMovieID": 470170
+    },
+    {
+      "internalIDs": [
+        6031,
+        9119
+      ],
+      "movieQIDs": [
+        "Q111983089",
+        "Q12481744"
+      ],
+      "tmdbMovieID": 832015
+    },
+    {
+      "internalIDs": [
+        23976,
+        37477
+      ],
+      "movieQIDs": [
+        "Q26720614",
+        "Q5120453"
+      ],
+      "tmdbMovieID": 1622558
+    }
+  ],
+  "failed": [],
+  "generatedAt": "2026-09-14T14:55:35.998641+00:00",
+  "groups": {
+    "has_both": {
+      "added": 4,
+      "startingMissing": 112,
+      "unresolved": 108
+    },
+    "location_only": {
+      "added": 53,
+      "startingMissing": 3050,
+      "unresolved": 2997
+    },
+    "target_match": {
+      "added": 0,
+      "startingMissing": 26,
+      "unresolved": 26
+    }
+  },
+  "invalid": [],
+  "source": "Wikidata P4947 only",
+  "startingMissing": 3162,
+  "unresolved": 3105
+}

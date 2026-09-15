@@ -70,13 +70,12 @@ final class ICloudBackupManager: ObservableObject {
     @Published private(set) var status: Status = .idle
     nonisolated private static let containerIdentifier = "iCloud.com.xiaoguiwk.ReelSpan"
 
-    func restore(localCacheDirectory: URL) async -> ICloudBackupManifest? {
+    func restore() async -> ICloudBackupManifest? {
         status = .syncing
         do {
             let result = try await Task.detached(priority: .utility) {
                 try Self.restoreFiles(
-                    containerIdentifier: Self.containerIdentifier,
-                    localCacheDirectory: localCacheDirectory
+                    containerIdentifier: Self.containerIdentifier
                 )
             }.value
             status = result.map { .success($0.updatedAt) } ?? .idle
@@ -89,14 +88,13 @@ final class ICloudBackupManager: ObservableObject {
         return nil
     }
 
-    func backup(_ manifest: ICloudBackupManifest, localCacheDirectory: URL) async {
+    func backup(_ manifest: ICloudBackupManifest) async {
         status = .syncing
         do {
             try await Task.detached(priority: .utility) {
                 try Self.backupFiles(
                     manifest: manifest,
-                    containerIdentifier: Self.containerIdentifier,
-                    localCacheDirectory: localCacheDirectory
+                    containerIdentifier: Self.containerIdentifier
                 )
             }.value
             status = .success(manifest.updatedAt)
@@ -115,54 +113,24 @@ final class ICloudBackupManager: ObservableObject {
     }
 
     nonisolated private static func restoreFiles(
-        containerIdentifier: String,
-        localCacheDirectory: URL
+        containerIdentifier: String
     ) throws -> ICloudBackupManifest? {
         let cloud = try cloudDirectory(containerIdentifier: containerIdentifier)
         let manifestURL = cloud.appendingPathComponent("user-backup.json")
         guard FileManager.default.fileExists(atPath: manifestURL.path) else { return nil }
         try? FileManager.default.startDownloadingUbiquitousItem(at: manifestURL)
         let manifest = try JSONDecoder().decode(ICloudBackupManifest.self, from: Data(contentsOf: manifestURL))
-        try copyNewerFiles(
-            from: cloud.appendingPathComponent("TMDB", isDirectory: true),
-            to: localCacheDirectory
-        )
         return manifest
     }
 
     nonisolated private static func backupFiles(
         manifest: ICloudBackupManifest,
-        containerIdentifier: String,
-        localCacheDirectory: URL
+        containerIdentifier: String
     ) throws {
         let cloud = try cloudDirectory(containerIdentifier: containerIdentifier)
         try FileManager.default.createDirectory(at: cloud, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(manifest)
         try data.write(to: cloud.appendingPathComponent("user-backup.json"), options: .atomic)
-        try copyNewerFiles(
-            from: localCacheDirectory,
-            to: cloud.appendingPathComponent("TMDB", isDirectory: true)
-        )
-    }
-
-    nonisolated private static func copyNewerFiles(from source: URL, to destination: URL) throws {
-        guard FileManager.default.fileExists(atPath: source.path) else { return }
-        let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
-        guard let enumerator = FileManager.default.enumerator(at: source, includingPropertiesForKeys: keys) else { return }
-        for case let file as URL in enumerator {
-            let values = try file.resourceValues(forKeys: Set(keys))
-            guard values.isRegularFile == true else { continue }
-            let relative = String(file.path.dropFirst(source.path.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let target = destination.appendingPathComponent(relative)
-            let targetValues = try? target.resourceValues(forKeys: Set(keys))
-            if targetValues?.fileSize == values.fileSize,
-               (targetValues?.contentModificationDate ?? .distantPast) >= (values.contentModificationDate ?? .distantPast) {
-                continue
-            }
-            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? FileManager.default.removeItem(at: target)
-            try FileManager.default.copyItem(at: file, to: target)
-        }
     }
 }
 

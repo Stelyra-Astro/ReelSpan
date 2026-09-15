@@ -179,76 +179,41 @@ final class ContentRepository {
         preferredLanguage: String,
         limit: Int = 8
     ) -> [MovieViewData] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 2 else { return [] }
-        let sql = """
-        SELECT m.id,m.title_en,m.title_zh,m.labels_json,m.movie_qid,
-               m.director_qids_json,m.directors_json,
-               m.origin_country_qids_json,m.origin_countries_json,
-               m.genre_qids_json,m.genres_json,
-               m.original_language_qids_json,m.original_languages_json,
-               COALESCE(m.imdb_id,''),COALESCE(CAST(m.tmdb_movie_id AS TEXT),''),
-               COALESCE((
-                   SELECT group_concat(
-                       ml.raw_place_qid || ' ' || ml.raw_place_name_en || ' ' || ml.raw_place_name_zh || ' ' ||
-                       ml.raw_place_labels_json || ' ' || COALESCE(ml.historical_capital_qid,'') || ' ' ||
-                       COALESCE(ml.historical_capital_name_en,'') || ' ' || COALESCE(ml.modern_place_qid,'') || ' ' ||
-                       COALESCE(ml.modern_place_name_en,'') || ' ' || COALESCE(ml.city_qid,'') || ' ' ||
-                       COALESCE(ml.city_name_en,'') || ' ' || COALESCE(ml.city_name_zh,'') || ' ' ||
-                       COALESCE(ml.admin1_qid,'') || ' ' || COALESCE(ml.admin1_name_en,'') || ' ' ||
-                       COALESCE(ml.admin1_name_zh,'') || ' ' || COALESCE(ml.country_qid,'') || ' ' ||
-                       COALESCE(ml.country_name_en,'') || ' ' || COALESCE(ml.country_name_zh,''), ' '
-                   ) FROM movie_locations ml WHERE ml.movie_qid=m.movie_qid
-               ),''),
-               COALESCE((
-                   SELECT group_concat(
-                       mp.period_qid || ' ' || mp.period_name_en || ' ' || mp.period_name_zh || ' ' || mp.period_labels_json,
-                       ' '
-                   ) FROM movie_periods mp WHERE mp.movie_qid=m.movie_qid
-               ),'')
-        FROM movies m
-        """
-        guard let statement = try? db.prepare(sql) else { return [] }
-        defer { sqlite3_finalize(statement) }
-
-        var ranked: [(id: Int, rank: Int, title: String)] = []
-        while (try? db.step(statement)) == true {
-            guard !Task.isCancelled else { return [] }
-            let fields = (1...16).compactMap { db.text(statement, Int32($0)) }
-            guard let rank = SearchTextMatcher.rank(query: trimmed, fields: fields) else { continue }
-            ranked.append((db.int(statement, 0), rank, db.text(statement, 1) ?? ""))
-        }
-        return ranked
-            .sorted {
-                if $0.rank != $1.rank { return $0.rank < $1.rank }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
-            .prefix(limit)
-            .compactMap { movie(id: $0.id, preferredLanguage: preferredLanguage) }
+        // Movie metadata is intentionally absent from the bundled database.
+        // User-entered movie searches are handled by MovieMetadataService.
+        []
     }
 
-    func search(
+    func searchPage(
         startYear: Int,
         endYear: Int,
-        requestedLocation: LocationRecord,
+        targetQID: String,
         preferredLanguage: String,
         favoritesOnly: Bool,
-        favoriteIDs: Set<Int>
-    ) -> MovieSearchResult {
-        let ids = movieIDs(startYear: startYear, endYear: endYear, targetQID: requestedLocation.targetQID)
-        let filtered = favoritesOnly ? ids.filter { favoriteIDs.contains($0) } : ids
-        let movies = filtered.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
-        return MovieSearchResult(
-            movies: movies,
-            requestedLocation: requestedLocation,
-            matchedLocation: requestedLocation,
-            fallbackDepth: 0
+        favoriteIDs: Set<Int>,
+        offset: Int,
+        limit: Int = MoviePaginationPolicy.resultPageSize
+    ) -> MoviePage {
+        guard limit > 0, offset >= 0 else { return .empty }
+        let ids = movieIDs(
+            startYear: startYear,
+            endYear: endYear,
+            targetQID: targetQID,
+            favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs,
+            limit: limit + 1,
+            offset: offset
+        )
+        let pageIDs = Array(ids.prefix(limit))
+        return MoviePage(
+            movies: pageIDs.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) },
+            hasMore: ids.count > limit
         )
     }
 
     func allMovies(preferredLanguage: String) -> [MovieViewData] {
         guard let statement = try? db.prepare(
-            "SELECT id FROM movies ORDER BY release_year IS NULL, release_year DESC, title_en COLLATE NOCASE"
+            "SELECT id FROM movies ORDER BY id"
         ) else { return [] }
         defer { sqlite3_finalize(statement) }
         var result: [MovieViewData] = []
@@ -262,12 +227,7 @@ final class ContentRepository {
 
     func movies(ids: Set<Int>, preferredLanguage: String) -> [MovieViewData] {
         ids.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
-            .sorted {
-                if $0.releaseYear != $1.releaseYear {
-                    return ($0.releaseYear ?? Int.min) > ($1.releaseYear ?? Int.min)
-                }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
+            .sorted { $0.id < $1.id }
     }
 
     func movieQIDs(ids: Set<Int>) -> [String] {
@@ -300,10 +260,7 @@ final class ContentRepository {
 
     func movie(id: Int, preferredLanguage: String) -> MovieViewData? {
         let sql = """
-        SELECT movie_qid,tmdb_movie_id,release_date,release_year,runtime,labels_json,title_en,title_zh,
-               directors_json,origin_countries_json,genres_json,original_languages_json,image,
-               tmdb_overview,tmdb_tagline,overview_en,overview_source,overview_source_title,
-               overview_source_url,overview_license,imdb_id
+        SELECT movie_qid,tmdb_movie_id,imdb_id
         FROM movies WHERE id=? LIMIT 1
         """
         guard let statement = try? db.prepare(sql, bindings: [.int(id)]) else { return nil }
@@ -312,60 +269,65 @@ final class ContentRepository {
 
         let movieQID = db.text(statement, 0) ?? ""
         let tmdbID = sqlite3_column_type(statement, 1) == SQLITE_NULL ? nil : db.int(statement, 1)
-        let releaseDate = db.text(statement, 2)
-        let releaseYear = sqlite3_column_type(statement, 3) == SQLITE_NULL ? nil : db.int(statement, 3)
-        let runtime = sqlite3_column_type(statement, 4) == SQLITE_NULL
-            ? nil
-            : Int(db.double(statement, 4).rounded())
-        let labelsJSON = db.text(statement, 5) ?? "{}"
-        let titleEN = db.text(statement, 6) ?? movieQID
-        let titleZH = db.text(statement, 7) ?? titleEN
-        let title = CSVContentDecoder.localizedLabel(
-            json: labelsJSON,
-            preferredLanguage: preferredLanguage
-        ) ?? (LanguageResolver.normalizedCode(preferredLanguage) == "zh-Hans" ? titleZH : titleEN)
-        let directors = CSVContentDecoder.namedEntities(json: db.text(statement, 8) ?? "[]")
-        let countries = CSVContentDecoder.namedEntities(json: db.text(statement, 9) ?? "[]")
-        let genres = CSVContentDecoder.namedEntities(json: db.text(statement, 10) ?? "[]")
-        let languages = CSVContentDecoder.namedEntities(json: db.text(statement, 11) ?? "[]")
 
         return MovieViewData(
             id: id,
             movieQID: movieQID,
-            imdbID: db.text(statement, 20),
+            imdbID: db.text(statement, 2),
             tmdbID: tmdbID,
-            title: title,
-            overview: {
-                let supplied = db.text(statement, 15) ?? ""
-                return supplied.isEmpty ? (db.text(statement, 13) ?? "") : supplied
-            }(),
-            tagline: db.text(statement, 14) ?? "",
-            overviewSource: db.text(statement, 16) ?? "",
-            overviewSourceTitle: db.text(statement, 17) ?? "",
-            overviewSourceURL: db.text(statement, 18) ?? "",
-            overviewLicense: db.text(statement, 19) ?? "",
-            releaseDate: releaseDate,
-            releaseYear: releaseYear,
-            runtimeMinutes: runtime,
-            sourceImage: db.text(statement, 12),
-            originalLanguage: languages.first?.name ?? "—",
+            title: "",
+            overview: "",
+            tagline: "",
+            overviewSource: "",
+            overviewSourceTitle: "",
+            overviewSourceURL: "",
+            overviewLicense: "",
+            releaseDate: nil,
+            releaseYear: nil,
+            runtimeMinutes: nil,
+            sourceImage: nil,
+            originalLanguage: "",
             rating: 0,
             voteCount: 0,
             rankingScore: 0,
             smallPosterFilename: nil,
             largePosterURL: nil,
             backdropURL: nil,
-            director: directors.isEmpty ? nil : directors.map(\.name).joined(separator: " · "),
-            originCountries: countries.map(\.name),
-            isDocumentary: genres.contains { $0.name.localizedCaseInsensitiveContains("documentary") },
-            genres: genres.map(\.name),
+            director: nil,
+            originCountries: [],
+            isDocumentary: false,
+            genres: [],
             timeRanges: timeRanges(movieQID: movieQID),
             locations: locations(movieQID: movieQID, preferredLanguage: preferredLanguage),
             cast: []
         )
     }
 
-    private func movieIDs(startYear: Int, endYear: Int, targetQID: String) -> [Int] {
+    func movie(tmdbID: Int, preferredLanguage: String) -> MovieViewData? {
+        guard tmdbID > 0,
+              let statement = try? db.prepare(
+                "SELECT id FROM movies WHERE tmdb_movie_id=? ORDER BY id LIMIT 1",
+                bindings: [.int(tmdbID)]
+              ) else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard (try? db.step(statement)) == true else { return nil }
+        return movie(id: db.int(statement, 0), preferredLanguage: preferredLanguage)
+    }
+
+    private func movieIDs(
+        startYear: Int,
+        endYear: Int,
+        targetQID: String,
+        favoritesOnly: Bool,
+        favoriteIDs: Set<Int>,
+        limit: Int,
+        offset: Int
+    ) -> [Int] {
+        if favoritesOnly && favoriteIDs.isEmpty { return [] }
+        let orderedFavorites = favoriteIDs.sorted()
+        let favoriteClause = favoritesOnly
+            ? "AND m.id IN (\(Array(repeating: "?", count: orderedFavorites.count).joined(separator: ",")))"
+            : ""
         let sql = """
         SELECT DISTINCT m.id
         FROM movies m
@@ -391,16 +353,21 @@ final class ContentRepository {
                 )
             )
         )
-        ORDER BY m.release_year IS NULL, m.release_year DESC, m.title_en COLLATE NOCASE
-        LIMIT 300
+        \(favoriteClause)
+        ORDER BY m.id
+        LIMIT ? OFFSET ?
         """
+        var bindings: [SQLiteBindValue] = [
+            .int(endYear), .int(startYear),
+            .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0),
+            .text(targetQID), .text(targetQID)
+        ]
+        if favoritesOnly { bindings.append(contentsOf: orderedFavorites.map(SQLiteBindValue.int)) }
+        bindings.append(.int(limit))
+        bindings.append(.int(offset))
         guard let statement = try? db.prepare(
             sql,
-            bindings: [
-                .int(endYear), .int(startYear),
-                .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0),
-                .text(targetQID), .text(targetQID)
-            ]
+            bindings: bindings
         ) else { return [] }
         defer { sqlite3_finalize(statement) }
         var ids: [Int] = []
