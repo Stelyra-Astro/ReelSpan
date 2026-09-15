@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a native SwiftUI/MapKit iOS MVP with local SQLite content, local favorites, year/place filtering, administrative fallback, movie details, settings, optional large-image downloads and StoreKit 2 one-time purchase plumbing.
+**Goal:** Build a native SwiftUI/MapKit iOS MVP with local SQLite content, local favorites, year/place filtering, administrative fallback, movie details, settings, optional large-image downloads and StoreKit 2 consumable tip plumbing.
 
-**Architecture:** Pure Swift core rules are isolated and Linux-testable. The iOS app consumes the same core models, reads a bundled seed SQLite database copied to Application Support, and keeps user state in a separate SQLite database. SwiftUI views use MapKit; optional image downloads write to Application Support and never change the content database.
+**Architecture:** Pure Swift core rules are isolated and Linux-testable. The iOS app consumes the same core models, synchronizes story content from Supabase into an Application Support SQLite cache, and keeps user state in a separate SQLite database. SwiftUI views use MapKit; optional image downloads write to Application Support and never change the content database.
 
 **Tech Stack:** Swift 6-compatible source, SwiftUI, MapKit, SQLite3, StoreKit 2, URLSession, XCTest/Swift Testing via SwiftPM core tests.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 - iOS 17+.
 - No third-party dependencies.
-- No account or custom backend.
+- No user account; ReelSpan-operated Cloudflare and Supabase infrastructure may provide movie and story data.
 - Apple Maps / MapKit only.
 - Independent time ranges and administrative location fallback.
 - Preferred language => English => original language fallback.

@@ -1887,54 +1887,6 @@
         }
       }
     },
-    "settings.load_product": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Load Purchase Product"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "加载购买项目"
-          }
-        }
-      }
-    },
-    "settings.local_data.note": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Content and user data are stored separately so movie-database updates cannot overwrite favorites. Detailed data-management controls are reserved for a later version."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内容数据与用户数据分开保存，因此更新电影数据库不会覆盖收藏。更完整的数据管理功能预留到后续版本。"
-          }
-        }
-      }
-    },
-    "settings.locked": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not unlocked"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未解锁"
-          }
-        }
-      }
-    },
     "settings.map": {
       "localizations": {
         "en": {

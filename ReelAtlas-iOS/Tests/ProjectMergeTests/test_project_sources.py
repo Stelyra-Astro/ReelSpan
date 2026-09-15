@@ -39,9 +39,9 @@ class ProjectMergeTests(unittest.TestCase):
         for needle in expected:
             self.assertEqual(source_phase.count(needle), 1, needle)
 
-    def test_delivery_build_number_is_eight(self):
-        self.assertEqual(PBX.count("CURRENT_PROJECT_VERSION = 8;"), 2)
-        self.assertNotIn("CURRENT_PROJECT_VERSION = 7;", PBX)
+    def test_delivery_build_number_is_nine(self):
+        self.assertEqual(PBX.count("CURRENT_PROJECT_VERSION = 9;"), 2)
+        self.assertNotIn("CURRENT_PROJECT_VERSION = 8;", PBX)
 
 if __name__ == "__main__":
     unittest.main()

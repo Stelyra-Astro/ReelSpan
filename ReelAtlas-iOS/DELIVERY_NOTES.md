@@ -1,10 +1,10 @@
-# ReelSpan Build 8 Delivery Notes
+# ReelSpan Build 9 Delivery Notes
 
 ## 本次合并
 
 Build 6 合并了 `codex/supabase-content-sync` 和 `codex/dynamic-metadata` 两条开发线。故事内容继续由 Supabase 管理并在冷启动同步为本地离线 SQLite；电影标题、简介、类型、导演、演员、评分与 poster 使用独立的动态元数据链路。
 
-Build 8 修复了 MapKit 地点自动补全继承设备区域偏置的问题，地点搜索使用全球区域；设备电影缓存链路本次保持不变。
+Build 9 修复了 MapKit 地点自动补全继承设备区域偏置的问题，地点搜索使用全球区域；设备电影缓存链路本次保持不变。
 
 ## 电影数据链路
 
@@ -51,7 +51,7 @@ Build 8 修复了 MapKit 地点自动补全继承设备区域偏置的问题，�
 ## Build
 
 - Marketing Version: `1.0`
-- Build: `8`
+- Build: `9`
 - Minimum iOS: `17.0`
 - Bundle ID: `com.xiaoguiwk.ReelSpan`
 
