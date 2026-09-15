@@ -16,6 +16,8 @@ final class AppModel: ObservableObject {
     @Published var interfaceLanguagePreference: String
     @Published var databaseVersion = "Unknown"
     @Published var isSearching = false
+    @Published private(set) var isLoadingMovies = false
+    @Published private(set) var hasMoreMovies = false
     @Published var iCloudBackupEnabled: Bool
 
     let metadataStore = MovieMetadataStore()
@@ -23,10 +25,13 @@ final class AppModel: ObservableObject {
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
     private let searchData = SearchDataWorker()
+    private let moviePages = MoviePageWorker()
     private var users: UserDatabase?
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
     private var cloudBackupTask: Task<Void, Never>?
+    private var moviePageTask: Task<Void, Never>?
+    private var moviePageGeneration = UUID()
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -58,10 +63,6 @@ final class AppModel: ObservableObject {
             preference: interfaceLanguagePreference,
             systemLanguages: Locale.preferredLanguages
         )
-    }
-
-    var allMoviesForDownloads: [MovieViewData] {
-        content?.allMovies(preferredLanguage: effectiveLanguage) ?? []
     }
 
     var favoriteMovies: [MovieViewData] {
@@ -206,7 +207,7 @@ final class AppModel: ObservableObject {
                 selectedLocation = nil
                 displayedPlaceName = selection.countryFallbackName ?? selection.displayName
                 if reportErrors { errorMessage = L10n.text("home.location_not_indexed") }
-                movies = []
+                clearMovies()
                 fallbackMessage = nil
                 return
             }
@@ -232,7 +233,7 @@ final class AppModel: ObservableObject {
         ) else {
             selectedLocation = nil
             displayedPlaceName = String(format: "%.3f, %.3f", coordinate.latitude, coordinate.longitude)
-            movies = []
+            clearMovies()
             return
         }
         guard !Task.isCancelled else { return }
@@ -242,21 +243,45 @@ final class AppModel: ObservableObject {
     }
 
     func reload() {
-        guard let content, let requested = selectedLocation else { return }
-        let result = content.search(
-            startYear: storyTimeSelection.startYear,
-            endYear: storyTimeSelection.endYear,
-            requestedLocation: requested,
-            preferredLanguage: effectiveLanguage,
-            favoritesOnly: favoritesOnly,
-            favoriteIDs: favoriteIDs
-        )
-        movies = result.movies
-        if result.didFallback {
-            let range = "\(L10n.year(storyTimeSelection.startYear))–\(L10n.year(storyTimeSelection.endYear))"
-            fallbackMessage = L10n.format("home.fallback_message", result.requestedLocation.name, range, result.matchedLocation.name)
-        } else if fallbackMessage?.contains(result.requestedLocation.name) != true {
-            fallbackMessage = nil
+        clearMovies()
+        hasMoreMovies = selectedLocation != nil
+        loadMoreMovies()
+    }
+
+    private func clearMovies() {
+        moviePageTask?.cancel()
+        moviePageGeneration = UUID()
+        movies = []
+        isLoadingMovies = false
+        hasMoreMovies = false
+    }
+
+    func loadMoreMovies() {
+        guard !isLoadingMovies, hasMoreMovies, let requested = selectedLocation else { return }
+        isLoadingMovies = true
+        let generation = moviePageGeneration
+        let offset = movies.count
+        let startYear = storyTimeSelection.startYear
+        let endYear = storyTimeSelection.endYear
+        let language = effectiveLanguage
+        let favoritesOnly = favoritesOnly
+        let favoriteIDs = favoriteIDs
+        let targetQID = requested.targetQID
+        moviePageTask = Task { [weak self] in
+            guard let self else { return }
+            let page = await moviePages.page(
+                startYear: startYear,
+                endYear: endYear,
+                targetQID: targetQID,
+                language: language,
+                favoritesOnly: favoritesOnly,
+                favoriteIDs: favoriteIDs,
+                offset: offset
+            )
+            guard !Task.isCancelled, moviePageGeneration == generation else { return }
+            movies.append(contentsOf: page.movies)
+            hasMoreMovies = page.hasMore
+            isLoadingMovies = false
         }
     }
 
@@ -264,7 +289,7 @@ final class AppModel: ObservableObject {
         let regionCode = Locale.current.region?.identifier
         guard let capital = RegionalCapitalResolver.capital(forRegionCode: regionCode) else {
             selectedLocation = nil
-            movies = []
+            clearMovies()
             return
         }
 
@@ -275,7 +300,37 @@ final class AppModel: ObservableObject {
             preferredLanguage: effectiveLanguage
         )
         displayedPlaceName = selectedLocation?.name ?? capital.name
-        if selectedLocation != nil { reload() } else { movies = [] }
+        if selectedLocation != nil { reload() } else { clearMovies() }
+    }
+}
+
+private actor MoviePageWorker {
+    private var content: ContentRepository?
+
+    private func repository() -> ContentRepository? {
+        if content == nil { content = try? ContentRepository() }
+        return content
+    }
+
+    func page(
+        startYear: Int,
+        endYear: Int,
+        targetQID: String,
+        language: String,
+        favoritesOnly: Bool,
+        favoriteIDs: Set<Int>,
+        offset: Int
+    ) -> MoviePage {
+        guard !Task.isCancelled, let content = repository() else { return .empty }
+        return content.searchPage(
+            startYear: startYear,
+            endYear: endYear,
+            targetQID: targetQID,
+            preferredLanguage: language,
+            favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs,
+            offset: offset
+        )
     }
 }
 

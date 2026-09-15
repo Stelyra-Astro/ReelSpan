@@ -346,7 +346,7 @@ struct HomeView: View {
     private var searchSuggestions: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(combinedSearchSuggestions.prefix(12)) { suggestion in
+                ForEach(combinedSearchSuggestions.prefix(MoviePaginationPolicy.searchSuggestionLimit)) { suggestion in
                     Button {
                         choose(suggestion)
                     } label: {
@@ -478,6 +478,12 @@ struct HomeView: View {
                                 selectedDrawerMovie = movie
                             }
                             Divider().padding(.leading, 84)
+                        }
+                        if model.isLoadingMovies || model.hasMoreMovies {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18)
+                                .onAppear { model.loadMoreMovies() }
                         }
                     }
                     .padding(.horizontal, 12)

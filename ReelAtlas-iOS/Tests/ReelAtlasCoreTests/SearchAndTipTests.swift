@@ -2,6 +2,11 @@ import XCTest
 @testable import ReelAtlasCore
 
 final class SearchAndTipTests: XCTestCase {
+    func testMoviePaginationLimitsSearchAndMapResults() {
+        XCTAssertEqual(MoviePaginationPolicy.searchSuggestionLimit, 10)
+        XCTAssertEqual(MoviePaginationPolicy.resultPageSize, 15)
+    }
+
     @MainActor
     func testRepeatedQueryCannotPublishEarlierGeneration() async throws {
         let search = LatestMovieSearch(debounce: .zero)

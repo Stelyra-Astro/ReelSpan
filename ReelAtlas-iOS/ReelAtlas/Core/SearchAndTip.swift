@@ -51,6 +51,11 @@ public enum TipRules {
     public static func isValidQuantity(_ value: Int) -> Bool { (1...10).contains(value) }
 }
 
+public enum MoviePaginationPolicy {
+    public static let searchSuggestionLimit = 10
+    public static let resultPageSize = 15
+}
+
 public enum TipState: Equatable, Sendable {
     case unavailable, loading, ready, purchasing, verified, pending, cancelled, unverified, failed(String)
     public var isBusy: Bool { self == .loading || self == .purchasing }

@@ -134,11 +134,9 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
     }
 }
 
-struct MovieSearchResult {
+struct MoviePage: Sendable {
     let movies: [MovieViewData]
-    let requestedLocation: LocationRecord
-    let matchedLocation: LocationRecord
-    let fallbackDepth: Int
+    let hasMore: Bool
 
-    var didFallback: Bool { fallbackDepth > 0 }
+    static let empty = MoviePage(movies: [], hasMore: false)
 }

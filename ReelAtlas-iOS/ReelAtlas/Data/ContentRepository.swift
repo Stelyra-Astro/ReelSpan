@@ -194,22 +194,30 @@ final class ContentRepository {
         []
     }
 
-    func search(
+    func searchPage(
         startYear: Int,
         endYear: Int,
-        requestedLocation: LocationRecord,
+        targetQID: String,
         preferredLanguage: String,
         favoritesOnly: Bool,
-        favoriteIDs: Set<Int>
-    ) -> MovieSearchResult {
-        let ids = movieIDs(startYear: startYear, endYear: endYear, targetQID: requestedLocation.targetQID)
-        let filtered = favoritesOnly ? ids.filter { favoriteIDs.contains($0) } : ids
-        let movies = filtered.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
-        return MovieSearchResult(
-            movies: movies,
-            requestedLocation: requestedLocation,
-            matchedLocation: requestedLocation,
-            fallbackDepth: 0
+        favoriteIDs: Set<Int>,
+        offset: Int,
+        limit: Int = MoviePaginationPolicy.resultPageSize
+    ) -> MoviePage {
+        guard limit > 0, offset >= 0 else { return .empty }
+        let ids = movieIDs(
+            startYear: startYear,
+            endYear: endYear,
+            targetQID: targetQID,
+            favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs,
+            limit: limit + 1,
+            offset: offset
+        )
+        let pageIDs = Array(ids.prefix(limit))
+        return MoviePage(
+            movies: pageIDs.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) },
+            hasMore: ids.count > limit
         )
     }
 
@@ -316,7 +324,20 @@ final class ContentRepository {
         return movie(id: db.int(statement, 0), preferredLanguage: preferredLanguage)
     }
 
-    private func movieIDs(startYear: Int, endYear: Int, targetQID: String) -> [Int] {
+    private func movieIDs(
+        startYear: Int,
+        endYear: Int,
+        targetQID: String,
+        favoritesOnly: Bool,
+        favoriteIDs: Set<Int>,
+        limit: Int,
+        offset: Int
+    ) -> [Int] {
+        if favoritesOnly && favoriteIDs.isEmpty { return [] }
+        let orderedFavorites = favoriteIDs.sorted()
+        let favoriteClause = favoritesOnly
+            ? "AND m.id IN (\(Array(repeating: "?", count: orderedFavorites.count).joined(separator: ",")))"
+            : ""
         let sql = """
         SELECT DISTINCT m.id
         FROM movies m
@@ -342,16 +363,21 @@ final class ContentRepository {
                 )
             )
         )
+        \(favoriteClause)
         ORDER BY m.id
-        LIMIT 300
+        LIMIT ? OFFSET ?
         """
+        var bindings: [SQLiteBindValue] = [
+            .int(endYear), .int(startYear),
+            .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0),
+            .text(targetQID), .text(targetQID)
+        ]
+        if favoritesOnly { bindings.append(contentsOf: orderedFavorites.map(SQLiteBindValue.int)) }
+        bindings.append(.int(limit))
+        bindings.append(.int(offset))
         guard let statement = try? db.prepare(
             sql,
-            bindings: [
-                .int(endYear), .int(startYear),
-                .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0),
-                .text(targetQID), .text(targetQID)
-            ]
+            bindings: bindings
         ) else { return [] }
         defer { sqlite3_finalize(statement) }
         var ids: [Int] = []
