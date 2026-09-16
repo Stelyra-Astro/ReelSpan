@@ -24,10 +24,12 @@ public enum RankingCalculator {
 public struct MovieRankingCandidate: Equatable, Sendable {
     public let localID: Int
     public let tmdbID: Int?
+    public let hasStoryTime: Bool
 
-    public init(localID: Int, tmdbID: Int?) {
+    public init(localID: Int, tmdbID: Int?, hasStoryTime: Bool = true) {
         self.localID = localID
         self.tmdbID = tmdbID
+        self.hasStoryTime = hasStoryTime
     }
 }
 
@@ -38,6 +40,7 @@ public enum MovieRankingPolicy {
     ) -> [MovieRankingCandidate] {
         let byTMDB = Dictionary(uniqueKeysWithValues: rankings.map { ($0.tmdbID, $0) })
         return candidates.sorted { lhs, rhs in
+            if lhs.hasStoryTime != rhs.hasStoryTime { return lhs.hasStoryTime }
             let left = lhs.tmdbID.flatMap { byTMDB[$0] }
             let right = rhs.tmdbID.flatMap { byTMDB[$0] }
             switch (left, right) {
@@ -52,6 +55,15 @@ public enum MovieRankingPolicy {
             case (nil, nil):
                 return lhs.localID < rhs.localID
             }
+        }
+    }
+}
+
+public enum MovieRankingBatchPolicy {
+    public static func batches(_ ids: [Int], maximumBatchSize: Int = 250) -> [[Int]] {
+        guard maximumBatchSize > 0 else { return [] }
+        return stride(from: 0, to: ids.count, by: maximumBatchSize).map { start in
+            Array(ids[start ..< min(ids.count, start + maximumBatchSize)])
         }
     }
 }

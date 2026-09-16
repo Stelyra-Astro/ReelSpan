@@ -106,6 +106,51 @@ final class ContentRepository {
         return nil
     }
 
+    func bestCountryMatch(candidateNames: [String], preferredLanguage: String) -> LocationRecord? {
+        for candidate in candidateNames where !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let targetSQL = """
+            SELECT t.rowid,t.target_qid,t.name_en,t.name_zh,t.labels_json,t.target_kind,p.coordinate
+            FROM targets t
+            LEFT JOIN places p ON p.place_qid=t.target_qid
+            WHERE t.target_kind='country' AND (
+                lower(t.name_en)=lower(?) OR lower(t.name_zh)=lower(?)
+                OR EXISTS (SELECT 1 FROM json_each(t.labels_json) WHERE lower(value)=lower(?))
+            )
+            LIMIT 1
+            """
+            if let statement = try? db.prepare(
+                targetSQL,
+                bindings: [.text(candidate), .text(candidate), .text(candidate)]
+            ) {
+                defer { sqlite3_finalize(statement) }
+                if (try? db.step(statement)) == true {
+                    return readLocation(statement, preferredLanguage: preferredLanguage)
+                }
+            }
+
+            let placeSQL = """
+            SELECT -p.rowid,p.place_qid,p.name_en,p.name_zh,p.labels_json,'country',p.coordinate
+            FROM movie_locations ml
+            JOIN places p ON p.place_qid=ml.country_qid
+            WHERE lower(ml.country_name_en)=lower(?) OR lower(ml.country_name_zh)=lower(?)
+               OR lower(p.name_en)=lower(?) OR lower(p.name_zh)=lower(?)
+               OR EXISTS (SELECT 1 FROM json_each(p.labels_json) WHERE lower(value)=lower(?))
+            GROUP BY p.rowid,p.place_qid,p.name_en,p.name_zh,p.labels_json,p.coordinate
+            LIMIT 1
+            """
+            if let statement = try? db.prepare(
+                placeSQL,
+                bindings: Array(repeating: .text(candidate), count: 5)
+            ) {
+                defer { sqlite3_finalize(statement) }
+                if (try? db.step(statement)) == true {
+                    return readLocation(statement, preferredLanguage: preferredLanguage)
+                }
+            }
+        }
+        return nil
+    }
+
     func nearestMovieLocation(
         latitude: Double,
         longitude: Double,
@@ -187,17 +232,17 @@ final class ContentRepository {
     func candidateMovies(
         startYear: Int,
         endYear: Int,
-        targetQID: String,
+        scope: MovieLocationScope,
         preferredLanguage: String,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
-        maximum: Int = 300
+        maximum: Int = -1
     ) -> [MovieViewData] {
-        guard maximum > 0 else { return [] }
+        guard maximum != 0 else { return [] }
         return movieIDs(
             startYear: startYear,
             endYear: endYear,
-            targetQID: targetQID,
+            scope: scope,
             favoritesOnly: favoritesOnly,
             favoriteIDs: favoriteIDs,
             limit: maximum,
@@ -221,7 +266,7 @@ final class ContentRepository {
         let ids = movieIDs(
             startYear: startYear,
             endYear: endYear,
-            targetQID: targetQID,
+            scope: .place(targetQID: targetQID),
             favoritesOnly: favoritesOnly,
             favoriteIDs: favoriteIDs,
             limit: limit + 1,
@@ -230,7 +275,8 @@ final class ContentRepository {
         let pageIDs = Array(ids.prefix(limit))
         return MoviePage(
             movies: pageIDs.compactMap { movie(id: $0, preferredLanguage: preferredLanguage) },
-            hasMore: ids.count > limit
+            hasMore: ids.count > limit,
+            storyLocations: []
         )
     }
 
@@ -340,7 +386,7 @@ final class ContentRepository {
     private func movieIDs(
         startYear: Int,
         endYear: Int,
-        targetQID: String,
+        scope: MovieLocationScope,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
         limit: Int,
@@ -351,6 +397,35 @@ final class ContentRepository {
         let favoriteClause = favoritesOnly
             ? "AND m.id IN (\(Array(repeating: "?", count: orderedFavorites.count).joined(separator: ",")))"
             : ""
+        let locationClause: String
+        let locationBindings: [SQLiteBindValue]
+        switch scope {
+        case .place(let targetQID):
+            locationClause = """
+            (
+                EXISTS (
+                    SELECT 1 FROM movie_target_matches mtm
+                    WHERE mtm.movie_qid=m.movie_qid AND mtm.target_qid=?
+                )
+                OR EXISTS (
+                    SELECT 1 FROM movie_locations ml
+                    WHERE ml.movie_qid=m.movie_qid AND ? IN (
+                        ml.raw_place_qid, ml.historical_capital_qid, ml.modern_place_qid,
+                        ml.city_qid, ml.admin1_qid, ml.country_qid
+                    )
+                )
+            )
+            """
+            locationBindings = [.text(targetQID), .text(targetQID)]
+        case .country(_, let countryQID):
+            locationClause = """
+            EXISTS (
+                SELECT 1 FROM movie_locations ml
+                WHERE ml.movie_qid=m.movie_qid AND ml.country_qid=?
+            )
+            """
+            locationBindings = [.text(countryQID)]
+        }
         let sql = """
         SELECT DISTINCT m.id
         FROM movies m
@@ -363,28 +438,16 @@ final class ContentRepository {
                 SELECT 1 FROM movie_periods mp
                 WHERE mp.movie_qid=m.movie_qid AND mp.start_year IS NOT NULL AND mp.end_year IS NOT NULL
             ))
-        ) AND (
-            EXISTS (
-                SELECT 1 FROM movie_target_matches mtm
-                WHERE mtm.movie_qid=m.movie_qid AND mtm.target_qid=?
-            )
-            OR EXISTS (
-                SELECT 1 FROM movie_locations ml
-                WHERE ml.movie_qid=m.movie_qid AND ? IN (
-                    ml.raw_place_qid, ml.historical_capital_qid, ml.modern_place_qid,
-                    ml.city_qid, ml.admin1_qid, ml.country_qid
-                )
-            )
-        )
+        ) AND \(locationClause)
         \(favoriteClause)
         ORDER BY m.id
         LIMIT ? OFFSET ?
         """
         var bindings: [SQLiteBindValue] = [
             .int(endYear), .int(startYear),
-            .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0),
-            .text(targetQID), .text(targetQID)
+            .int(StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear) ? 1 : 0)
         ]
+        bindings.append(contentsOf: locationBindings)
         if favoritesOnly { bindings.append(contentsOf: orderedFavorites.map(SQLiteBindValue.int)) }
         bindings.append(.int(limit))
         bindings.append(.int(offset))
@@ -422,9 +485,10 @@ final class ContentRepository {
 
     private func locations(movieQID: String, preferredLanguage: String) -> [StoryLocation] {
         let sql = """
-        SELECT raw_place_qid,raw_place_labels_json,raw_place_name_en,raw_place_name_zh
-        FROM movie_locations
-        WHERE movie_qid=?
+        SELECT ml.raw_place_qid,ml.raw_place_labels_json,ml.raw_place_name_en,ml.raw_place_name_zh,p.coordinate
+        FROM movie_locations ml
+        LEFT JOIN places p ON p.place_qid=ml.raw_place_qid
+        WHERE ml.movie_qid=?
         GROUP BY raw_place_qid,raw_place_labels_json,raw_place_name_en,raw_place_name_zh
         ORDER BY MAX(is_target_match) DESC,raw_place_name_en COLLATE NOCASE
         """
@@ -438,7 +502,13 @@ final class ContentRepository {
             let nameZH = db.text(statement, 3) ?? nameEN
             let name = CSVContentDecoder.localizedLabel(json: labels, preferredLanguage: preferredLanguage)
                 ?? (LanguageResolver.normalizedCode(preferredLanguage) == "zh-Hans" ? nameZH : nameEN)
-            values.append(StoryLocation(rawPlaceQID: qid, name: name))
+            let coordinate = Self.parsePoint(db.text(statement, 4))
+            values.append(StoryLocation(
+                rawPlaceQID: qid,
+                name: name,
+                latitude: coordinate?.latitude,
+                longitude: coordinate?.longitude
+            ))
         }
         return values
     }

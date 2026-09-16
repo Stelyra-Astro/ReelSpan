@@ -9,6 +9,9 @@ final class AppModel: ObservableObject {
     @Published var selectedCoordinate = InitialLocationFallback.coordinate
     @Published var displayedPlaceName = InitialLocationFallback.displayName
     @Published var movies: [MovieViewData] = []
+    @Published private(set) var storyLocationPins: [StoryLocation] = []
+    @Published private var mapViewportIntent = MapViewportIntent()
+    @Published private(set) var temporarySearchMarker: SearchSelectionMarker?
     @Published var favoriteIDs = Set<Int>()
     @Published var favoritesOnly = false
     @Published var fallbackMessage: String?
@@ -38,6 +41,7 @@ final class AppModel: ObservableObject {
     private var cloudBackupTask: Task<Void, Never>?
     private var moviePageTask: Task<Void, Never>?
     private var moviePageGeneration = UUID()
+    private var movieLocationScope: MovieLocationScope?
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -82,6 +86,15 @@ final class AppModel: ObservableObject {
 
     var effectiveLanguage: String {
         effectiveInterfaceLanguage
+    }
+
+    var searchViewport: PlaceSearchViewport? {
+        mapViewportIntent.viewport
+    }
+
+    func userDidNavigateMap() {
+        guard mapViewportIntent.viewport != nil else { return }
+        mapViewportIntent.userNavigationStarted()
     }
 
     var effectiveInterfaceLanguage: String {
@@ -212,7 +225,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectSearchSuggestion(_ suggestion: MapSearchSuggestion) async {
-        await resolveSelection { try await MapSearchService.resolve(suggestion) }
+        await resolveSelection(source: .searchResult) { try await MapSearchService.resolve(suggestion) }
     }
 
     func indexedPlaceSuggestions(_ query: String) async -> [MapSearchSuggestion] {
@@ -220,7 +233,9 @@ final class AppModel: ObservableObject {
             MapSearchSuggestion(title: value.name, subtitle: value.names.dropFirst().joined(separator: " · "), selection:
                 MapSearchSelection(displayName: value.name,
                     coordinate: CLLocationCoordinate2D(latitude: value.latitude, longitude: value.longitude),
-                    candidateDatabaseNames: value.names, countryFallbackName: value.country))
+                    candidateDatabaseNames: value.names, countryFallbackName: value.country,
+                    category: value.category, countryCode: value.countryCode,
+                    localityName: value.category == .locality ? value.name : nil))
         }
     }
 
@@ -230,7 +245,11 @@ final class AppModel: ObservableObject {
 
     func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D, reportErrors: Bool = true) async {
         guard content != nil else { return }
-        await resolveSelection(reportErrors: reportErrors, fallbackCoordinate: coordinate) {
+        await resolveSelection(
+            source: .mapNavigation,
+            reportErrors: reportErrors,
+            fallbackCoordinate: coordinate
+        ) {
             try await MapSearchService.reverseLookup(
                 coordinate,
                 preferredLocale: Locale(identifier: effectiveInterfaceLanguage)
@@ -239,6 +258,7 @@ final class AppModel: ObservableObject {
     }
 
     private func resolveSelection(
+        source: MapSelectionSource,
         reportErrors: Bool = true,
         fallbackCoordinate: CLLocationCoordinate2D? = nil,
         _ operation: () async throws -> MapSearchSelection
@@ -250,8 +270,32 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             selectedCoordinate = selection.coordinate
             displayedPlaceName = selection.displayName
-            if let matched = content?.bestLocationMatch(candidateNames: selection.candidateDatabaseNames, preferredLanguage: effectiveLanguage) {
+            mapViewportIntent.selectionResolved(selection.viewport, source: source)
+            temporarySearchMarker = selection.showsTemporaryMarker
+                ? SearchSelectionMarker(name: selection.displayName, coordinate: selection.coordinate)
+                : nil
+            let matched: LocationRecord?
+            if selection.category == .country {
+                matched = content?.bestCountryMatch(
+                    candidateNames: selection.candidateDatabaseNames,
+                    preferredLanguage: effectiveLanguage
+                )
+            } else {
+                matched = content?.bestLocationMatch(
+                    candidateNames: selection.candidateDatabaseNames,
+                    preferredLanguage: effectiveLanguage
+                )
+            }
+            if let matched {
                 selectedLocation = matched
+                if selection.category == .country {
+                    let countryCode = selection.countryCode
+                        ?? CountryCodeResolver.code(candidateNames: selection.candidateDatabaseNames)
+                        ?? ""
+                    movieLocationScope = .country(countryCode: countryCode, countryQID: matched.targetQID)
+                } else {
+                    movieLocationScope = .place(targetQID: matched.targetQID)
+                }
                 if matched.name.caseInsensitiveCompare(selection.displayName) != .orderedSame,
                    !selection.displayName.localizedCaseInsensitiveContains(matched.name) {
                     fallbackMessage = L10n.format("home.map_parent_match", selection.displayName, matched.name)
@@ -262,6 +306,7 @@ final class AppModel: ObservableObject {
                     return
                 }
                 selectedLocation = nil
+                movieLocationScope = nil
                 displayedPlaceName = selection.countryFallbackName ?? selection.displayName
                 if reportErrors { errorMessage = L10n.text("home.location_not_indexed") }
                 clearMovies()
@@ -283,25 +328,28 @@ final class AppModel: ObservableObject {
         guard !Task.isCancelled else { return }
         selectedCoordinate = coordinate
         fallbackMessage = nil
+        temporarySearchMarker = nil
         guard let nearest = content?.nearestMovieLocation(
             latitude: coordinate.latitude,
             longitude: coordinate.longitude,
             preferredLanguage: effectiveLanguage
         ) else {
             selectedLocation = nil
+            movieLocationScope = nil
             displayedPlaceName = String(format: "%.3f, %.3f", coordinate.latitude, coordinate.longitude)
             clearMovies()
             return
         }
         guard !Task.isCancelled else { return }
         selectedLocation = nearest
+        movieLocationScope = .place(targetQID: nearest.targetQID)
         displayedPlaceName = nearest.name
         reload()
     }
 
     func reload() {
         clearMovies()
-        hasMoreMovies = selectedLocation != nil
+        hasMoreMovies = movieLocationScope != nil
         loadMoreMovies()
     }
 
@@ -309,12 +357,13 @@ final class AppModel: ObservableObject {
         moviePageTask?.cancel()
         moviePageGeneration = UUID()
         movies = []
+        storyLocationPins = []
         isLoadingMovies = false
         hasMoreMovies = false
     }
 
     func loadMoreMovies() {
-        guard !isLoadingMovies, hasMoreMovies, let requested = selectedLocation else { return }
+        guard !isLoadingMovies, hasMoreMovies, let scope = movieLocationScope else { return }
         isLoadingMovies = true
         let generation = moviePageGeneration
         let offset = movies.count
@@ -323,13 +372,12 @@ final class AppModel: ObservableObject {
         let language = effectiveLanguage
         let favoritesOnly = favoritesOnly
         let favoriteIDs = favoriteIDs
-        let targetQID = requested.targetQID
         moviePageTask = Task { [weak self] in
             guard let self else { return }
             let page = await moviePages.page(
                 startYear: startYear,
                 endYear: endYear,
-                targetQID: targetQID,
+                scope: scope,
                 language: language,
                 favoritesOnly: favoritesOnly,
                 favoriteIDs: favoriteIDs,
@@ -338,6 +386,7 @@ final class AppModel: ObservableObject {
             )
             guard !Task.isCancelled, moviePageGeneration == generation else { return }
             movies.append(contentsOf: page.movies)
+            storyLocationPins = page.storyLocations
             hasMoreMovies = page.hasMore
             isLoadingMovies = false
         }
@@ -350,6 +399,14 @@ final class AppModel: ObservableObject {
             preferredLanguage: effectiveLanguage
         )
         displayedPlaceName = selectedLocation?.name ?? InitialLocationFallback.displayName
+        movieLocationScope = selectedLocation.map { .place(targetQID: $0.targetQID) }
+        mapViewportIntent.select(PlaceSearchViewportPolicy.viewport(
+            category: .administrativeArea,
+            latitude: selectedCoordinate.latitude,
+            longitude: selectedCoordinate.longitude,
+            bounds: nil
+        ))
+        temporarySearchMarker = nil
         initialLocationResolved = true
         if selectedLocation != nil { reload() } else { clearMovies() }
     }
@@ -359,7 +416,7 @@ private actor MoviePageWorker {
     private struct QueryKey: Hashable {
         let startYear: Int
         let endYear: Int
-        let targetQID: String
+        let scope: MovieLocationScope
         let language: String
         let favoritesOnly: Bool
         let favoriteIDs: [Int]
@@ -378,7 +435,7 @@ private actor MoviePageWorker {
     func page(
         startYear: Int,
         endYear: Int,
-        targetQID: String,
+        scope: MovieLocationScope,
         language: String,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
@@ -387,21 +444,33 @@ private actor MoviePageWorker {
     ) async -> MoviePage {
         guard !Task.isCancelled, let content else { return .empty }
         let key = QueryKey(
-            startYear: startYear, endYear: endYear, targetQID: targetQID, language: language,
+            startYear: startYear, endYear: endYear, scope: scope, language: language,
             favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs.sorted()
         )
 
         if currentKey != key || offset == 0 {
             let candidates = content.candidateMovies(
-                startYear: startYear, endYear: endYear, targetQID: targetQID,
+                startYear: startYear, endYear: endYear, scope: scope,
                 preferredLanguage: language, favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs
             )
             let tmdbIDs = candidates.compactMap(\.tmdbID)
-            let rankings = (try? await metadataService.rankings(tmdbIDs: tmdbIDs)) ?? []
+            var rankings: [MovieRanking] = []
+            for batch in MovieRankingBatchPolicy.batches(tmdbIDs) {
+                guard !Task.isCancelled else { return .empty }
+                if let values = try? await metadataService.rankings(tmdbIDs: batch) {
+                    rankings.append(contentsOf: values)
+                }
+            }
             let rankingByTMDB = Dictionary(uniqueKeysWithValues: rankings.map { ($0.tmdbID, $0) })
             let byLocalID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
             let ordered = MovieRankingPolicy.sortedCandidates(
-                candidates.map { MovieRankingCandidate(localID: $0.id, tmdbID: $0.tmdbID) },
+                candidates.map {
+                    MovieRankingCandidate(
+                        localID: $0.id,
+                        tmdbID: $0.tmdbID,
+                        hasStoryTime: !$0.timeRanges.isEmpty
+                    )
+                },
                 rankings: rankings
             )
             rankedMovies = ordered.compactMap { candidate in
@@ -416,8 +485,17 @@ private actor MoviePageWorker {
         let end = min(rankedMovies.count, offset + MoviePaginationPolicy.resultPageSize)
         return MoviePage(
             movies: Array(rankedMovies[offset..<end]),
-            hasMore: end < rankedMovies.count
+            hasMore: end < rankedMovies.count,
+            storyLocations: Self.uniqueStoryLocations(in: rankedMovies)
         )
+    }
+
+    private static func uniqueStoryLocations(in movies: [MovieViewData]) -> [StoryLocation] {
+        var seen = Set<String>()
+        return movies.flatMap(\.locations).filter { location in
+            guard location.coordinate != nil else { return false }
+            return seen.insert(location.rawPlaceQID).inserted
+        }
     }
 }
 
@@ -435,6 +513,8 @@ private actor SearchDataWorker {
         let longitude: Double
         let names: [String]
         let country: String?
+        let category: PlaceSearchCategory
+        let countryCode: String?
     }
 
     func places(query: String, language: String) -> [Place] {
@@ -452,7 +532,21 @@ private actor SearchDataWorker {
                 if parent.type == "country" { country = parent.name }
                 parentID = parent.parentID
             }
-            return Place(name: location.name, latitude: latitude, longitude: longitude, names: names, country: country)
+            let category: PlaceSearchCategory
+            switch location.type.lowercased() {
+            case "country": category = .country
+            case "admin1", "administrativearea", "administrative_area": category = .administrativeArea
+            default: category = .locality
+            }
+            return Place(
+                name: location.name,
+                latitude: latitude,
+                longitude: longitude,
+                names: names,
+                country: country,
+                category: category,
+                countryCode: CountryCodeResolver.code(candidateNames: names)
+            )
         }
     }
 

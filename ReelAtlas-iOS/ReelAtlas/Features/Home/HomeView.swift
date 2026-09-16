@@ -41,9 +41,15 @@ struct HomeView: View {
         ZStack {
             MapReader { proxy in
                 Map(position: $camera) {
-                    if !model.displayedPlaceName.isEmpty {
-                        Marker(model.displayedPlaceName, coordinate: model.selectedCoordinate)
-                            .tint(Color(red: 0.45, green: 0.16, blue: 0.12))
+                    ForEach(model.storyLocationPins) { location in
+                        if let coordinate = location.coordinate {
+                            Marker(location.name, systemImage: "film.fill", coordinate: coordinate)
+                                .tint(Color(red: 0.45, green: 0.16, blue: 0.12))
+                        }
+                    }
+                    if let marker = model.temporarySearchMarker {
+                        Marker(marker.name, systemImage: "mappin.circle.fill", coordinate: marker.coordinate)
+                            .tint(.blue)
                     }
                 }
                 .id(model.effectiveInterfaceLanguage)
@@ -65,8 +71,9 @@ struct HomeView: View {
                     }
                 }
                 .onMapCameraChange(frequency: .continuous) { _ in
+                    mapCenterTask?.cancel()
+                    model.userDidNavigateMap()
                     if !suppressCameraCallbacks {
-                        mapCenterTask?.cancel()
                         drawerState.mapNavigationStarted()
                     }
                 }
@@ -96,11 +103,8 @@ struct HomeView: View {
             await model.resolveInitialLocation()
             updateCamera()
         }
-        .onChange(of: model.selectedCoordinate.latitude) { _, _ in
-            updateCamera()
-        }
-        .onChange(of: model.selectedCoordinate.longitude) { _, _ in
-            updateCamera()
+        .onChange(of: model.searchViewport) { _, viewport in
+            if viewport != nil { updateCamera() }
         }
         .sheet(isPresented: resultsSheetIsPresented, onDismiss: resultsSheetDidDismiss) {
             movieSheet
@@ -243,13 +247,13 @@ struct HomeView: View {
                         )
                         .frame(maxWidth: .infinity, minHeight: 24)
                         .onChange(of: query) { _, value in
-                            placeSearch.update(query: value)
+                            placeSearch.update(query: value, language: model.effectiveInterfaceLanguage)
                             scheduleMovieSearch(value)
                         }
                         .onChange(of: searchIsFocused) { _, focused in
                             if focused { drawerState.searchFocused() }
                         }
-                        if model.isSearching || movieSearch.isPending {
+                        if model.isSearching || placeSearch.isSearching || movieSearch.isPending {
                             ProgressView().controlSize(.small)
                         }
                     }
@@ -414,7 +418,7 @@ struct HomeView: View {
             collapseSearch()
             drawerState.searchFinished()
         case .showCandidates:
-            Task { await placeSearch.submit(query: query) }
+            Task { await placeSearch.submit(query: query, language: model.effectiveInterfaceLanguage) }
         }
     }
 
@@ -521,7 +525,6 @@ struct HomeView: View {
         case .place(let place):
             Task {
                 await model.selectSearchSuggestion(place)
-                updateCamera()
                 drawerState.showResults()
             }
         }
@@ -550,12 +553,22 @@ struct HomeView: View {
     private func updateCamera() {
         cameraSuppressionTask?.cancel()
         suppressCameraCallbacks = true
-        camera = .region(
-            MKCoordinateRegion(
-                center: model.selectedCoordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.45, longitudeDelta: 0.45)
-            )
+        let viewport = model.searchViewport ?? PlaceSearchViewportPolicy.viewport(
+            category: .locality,
+            latitude: model.selectedCoordinate.latitude,
+            longitude: model.selectedCoordinate.longitude,
+            bounds: nil
         )
+        camera = .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: viewport.centerLatitude,
+                longitude: viewport.centerLongitude
+            ),
+            span: MKCoordinateSpan(
+                latitudeDelta: viewport.latitudeDelta,
+                longitudeDelta: viewport.longitudeDelta
+            )
+        ))
         cameraSuppressionTask = Task {
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
@@ -583,7 +596,7 @@ struct HomeView: View {
         placeTask?.cancel()
         indexedPlaces = []
         placeTask = Task {
-            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            guard value.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return }
             let places = await model.indexedPlaceSuggestions(value)
             guard !Task.isCancelled, query == value else { return }
             indexedPlaces = places

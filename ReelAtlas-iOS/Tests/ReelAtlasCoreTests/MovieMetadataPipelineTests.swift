@@ -131,6 +131,30 @@ final class MovieMetadataPipelineTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.localID), [2, 1, 3, 4])
     }
 
+    func testRankingPolicyPlacesStorytimePendingAfterMoviesWithStoryTime() {
+        let candidates = [
+            MovieRankingCandidate(localID: 1, tmdbID: 101, hasStoryTime: false),
+            MovieRankingCandidate(localID: 2, tmdbID: 102, hasStoryTime: true)
+        ]
+        let rankings = [
+            MovieRanking(tmdbID: 101, rating: 9.5, voteCount: 100_000),
+            MovieRanking(tmdbID: 102, rating: 6.0, voteCount: 10)
+        ]
+
+        let sorted = MovieRankingPolicy.sortedCandidates(candidates, rankings: rankings)
+
+        XCTAssertEqual(sorted.map(\.localID), [2, 1])
+    }
+
+    func testRankingRequestsBatchLargeCountryCandidateSets() {
+        let batches = MovieRankingBatchPolicy.batches(Array(1 ... 601), maximumBatchSize: 250)
+
+        XCTAssertEqual(batches.count, 3)
+        XCTAssertEqual(batches[0], Array(1 ... 250))
+        XCTAssertEqual(batches[1], Array(251 ... 500))
+        XCTAssertEqual(batches[2], Array(501 ... 601))
+    }
+
     func testSearchPolicyHidesMoviesMissingFromStoryDatabase() {
         let items = [
             MovieSearchItem(

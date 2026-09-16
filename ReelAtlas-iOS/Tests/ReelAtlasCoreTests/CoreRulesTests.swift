@@ -371,6 +371,380 @@ final class CoreRulesTests: XCTestCase {
         XCTAssertFalse(hierarchy.databaseCandidateNames.contains("Hôtel de Ville"))
         XCTAssertFalse(hierarchy.databaseCandidateNames.contains("Montmartre"))
     }
+
+    func testCountrySearchResultIsValidWithoutALocality() {
+        let result = PlaceSearchResult(
+            provider: .mapKit,
+            providerPlaceID: "country|FR",
+            displayName: "France",
+            canonicalName: "France",
+            category: .country,
+            latitude: 46.2276,
+            longitude: 2.2137,
+            locality: nil,
+            administrativeArea: nil,
+            countryName: "France",
+            countryCode: "FR"
+        )
+
+        XCTAssertTrue(result.hasValidCoordinate)
+        XCTAssertEqual(result.storyLocationCandidateNames, ["France"])
+        XCTAssertEqual(
+            result.movieFilterScope,
+            .country(countryCode: "FR", candidateNames: ["France"])
+        )
+    }
+
+    func testCitySearchResultKeepsSpecificPlaceMovieFilter() {
+        let result = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "Paris",
+            canonicalName: "Paris",
+            locality: "Paris",
+            administrativeArea: "Île-de-France",
+            countryName: "France",
+            latitude: 48.8566,
+            longitude: 2.3522
+        )
+
+        XCTAssertEqual(
+            result.movieFilterScope,
+            .place(candidateNames: ["Paris", "Île-de-France", "France"])
+        )
+    }
+
+    func testLondonFallsBackToPhotonWhenMapKitOnlyReturnsWeakChinaMatch() async throws {
+        let calls = SearchProviderCallLog()
+        let chinaResult = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "伦敦广场",
+            canonicalName: "Lundun Plaza",
+            locality: "石家庄",
+            countryName: "中国",
+            latitude: 38.04,
+            longitude: 114.51
+        )
+        let londonResult = PlaceSearchResult.fixture(
+            provider: .photon,
+            displayName: "London",
+            canonicalName: "London",
+            locality: "London",
+            countryName: "United Kingdom",
+            latitude: 51.5072,
+            longitude: -0.1276
+        )
+
+        let results = try await PlaceSearchPipeline.search(
+            query: "London",
+            mapKit: { await calls.record(.mapKit); return [chinaResult] },
+            photon: { await calls.record(.photon); return [londonResult] },
+            geoNames: { await calls.record(.geoNames); return [] }
+        )
+
+        XCTAssertEqual(results.map(\.canonicalName), ["London"])
+        let recordedCalls = await calls.values
+        XCTAssertEqual(recordedCalls, [.mapKit, .photon])
+    }
+
+    func testMapKitPOIPrefixIsNotEnoughToBlockGlobalCityFallback() {
+        let weakPOI = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "London Plaza",
+            canonicalName: "London Plaza",
+            category: .poi,
+            locality: "Shijiazhuang",
+            countryName: "China",
+            latitude: 38.04,
+            longitude: 114.51
+        )
+        let exactPOI = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "Times Square",
+            canonicalName: "Times Square",
+            category: .poi,
+            locality: "New York",
+            countryName: "United States",
+            latitude: 40.758,
+            longitude: -73.9855
+        )
+
+        XCTAssertFalse(PlaceSearchRelevance.isRelevant(query: "London", result: weakPOI))
+        XCTAssertTrue(PlaceSearchRelevance.isRelevant(query: "Times Square", result: exactPOI))
+    }
+
+    func testBeijingStopsAfterRelevantMapKitResult() async throws {
+        let calls = SearchProviderCallLog()
+        let beijing = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "Beijing",
+            canonicalName: "Beijing",
+            locality: "Beijing",
+            countryName: "China",
+            latitude: 39.9042,
+            longitude: 116.4074
+        )
+
+        let results = try await PlaceSearchPipeline.search(
+            query: "Beijing",
+            mapKit: { await calls.record(.mapKit); return [beijing] },
+            photon: { await calls.record(.photon); return [] },
+            geoNames: { await calls.record(.geoNames); return [] }
+        )
+
+        XCTAssertEqual(results.map(\.canonicalName), ["Beijing"])
+        let recordedCalls = await calls.values
+        XCTAssertEqual(recordedCalls, [.mapKit])
+    }
+
+    func testChineseNewYorkContinuesFromPhotonToLocalizedGeoNamesResult() async throws {
+        let calls = SearchProviderCallLog()
+        let newYork = PlaceSearchResult.fixture(
+            provider: .geoNames,
+            providerPlaceID: "5128581",
+            displayName: "纽约",
+            canonicalName: "New York City",
+            locality: "纽约",
+            countryName: "美国",
+            latitude: 40.7143,
+            longitude: -74.006
+        )
+
+        let results = try await PlaceSearchPipeline.search(
+            query: "纽约",
+            mapKit: { await calls.record(.mapKit); return [] },
+            photon: { await calls.record(.photon); return [] },
+            geoNames: { await calls.record(.geoNames); return [newYork] }
+        )
+
+        XCTAssertEqual(results.first?.displayName, "纽约")
+        XCTAssertEqual(results.first?.canonicalName, "New York City")
+        XCTAssertEqual(results.first?.providerPlaceID, "5128581")
+        let recordedCalls = await calls.values
+        XCTAssertEqual(recordedCalls, [.mapKit, .photon, .geoNames])
+    }
+
+    func testIrrelevantPhotonResultContinuesToGeoNames() async throws {
+        let calls = SearchProviderCallLog()
+        let irrelevant = PlaceSearchResult.fixture(
+            provider: .photon,
+            displayName: "New Town",
+            canonicalName: "New Town",
+            locality: "New Town",
+            countryName: "China",
+            latitude: 30,
+            longitude: 110
+        )
+        let newYork = PlaceSearchResult.fixture(
+            provider: .geoNames,
+            displayName: "纽约",
+            canonicalName: "New York City",
+            locality: "纽约",
+            countryName: "美国",
+            latitude: 40.7143,
+            longitude: -74.006
+        )
+
+        let results = try await PlaceSearchPipeline.search(
+            query: "纽约",
+            mapKit: { await calls.record(.mapKit); return [] },
+            photon: { await calls.record(.photon); return [irrelevant] },
+            geoNames: { await calls.record(.geoNames); return [newYork] }
+        )
+
+        XCTAssertEqual(results.first?.canonicalName, "New York City")
+        let recordedCalls = await calls.values
+        XCTAssertEqual(recordedCalls, [.mapKit, .photon, .geoNames])
+    }
+
+    func testTimesSquareKeepsPOICoordinateButNormalizesStoryLocationToCity() {
+        let result = PlaceSearchResult.fixture(
+            provider: .photon,
+            displayName: "Times Square",
+            canonicalName: "Times Square",
+            category: .poi,
+            locality: "New York",
+            administrativeArea: "New York",
+            countryName: "United States",
+            latitude: 40.758,
+            longitude: -73.9855
+        )
+
+        XCTAssertEqual(result.latitude, 40.758, accuracy: 0.0001)
+        XCTAssertEqual(result.longitude, -73.9855, accuracy: 0.0001)
+        XCTAssertEqual(result.storyLocationCandidateNames.first, "New York")
+        XCTAssertFalse(result.storyLocationCandidateNames.contains("Times Square"))
+        XCTAssertFalse(result.storyLocationCandidateNames.contains("Manhattan"))
+    }
+
+    func testPOIWithoutLocalityNeverFallsBackToDistrictOrCountry() {
+        let result = PlaceSearchResult.fixture(
+            provider: .geoNames,
+            displayName: "Example POI",
+            canonicalName: "Example POI",
+            category: .poi,
+            locality: nil,
+            administrativeArea: "Example District",
+            countryName: "Example Country",
+            latitude: 1,
+            longitude: 1
+        )
+
+        XCTAssertEqual(result.storyLocationCandidateNames, [])
+    }
+
+    func testProviderURLsAlwaysIncludeCurrentAppLanguage() throws {
+        XCTAssertEqual(
+            try XCTUnwrap(PlaceSearchEndpoint.photon(query: "纽约", language: "zh-Hans")).absoluteString,
+            "https://photon.komoot.io/api/?q=%E7%BA%BD%E7%BA%A6&limit=10&lang=zh-Hans"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(PlaceSearchEndpoint.geoNames(query: "France", language: "fr")).absoluteString,
+            "https://secure.geonames.org/searchJSON?q=France&maxRows=10&lang=fr&username=Stelyra"
+        )
+    }
+
+    func testGeoNamesUsesLocalizedNameCanonicalToponymAndStableID() throws {
+        let json = #"{"geonames":[{"geonameId":5128581,"name":"纽约","toponymName":"New York City","lat":"40.71427","lng":"-74.00597","countryCode":"US","countryName":"美国","adminName1":"纽约州","fcl":"P","fcode":"PPLA"}]}"#
+
+        let result = try XCTUnwrap(PlaceSearchResponseDecoder.geoNames(Data(json.utf8)).first)
+
+        XCTAssertEqual(result.displayName, "纽约")
+        XCTAssertEqual(result.canonicalName, "New York City")
+        XCTAssertEqual(result.providerPlaceID, "5128581")
+        XCTAssertEqual(result.category, .locality)
+        XCTAssertEqual(result.countryCode, "US")
+    }
+
+    func testPhotonPOIUsesRealCityAndExtentWithoutDistrictFallback() throws {
+        let json = #"{"features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-73.9855,40.758]},"properties":{"osm_type":"W","osm_id":123,"type":"house","name":"Times Square","city":"New York","district":"Manhattan","state":"New York","country":"United States","countrycode":"US","extent":[-73.987,40.756,-73.983,40.76]}}]}"#
+
+        let result = try XCTUnwrap(PlaceSearchResponseDecoder.photon(Data(json.utf8)).first)
+
+        XCTAssertEqual(result.category, .poi)
+        XCTAssertEqual(result.locality, "New York")
+        XCTAssertEqual(result.storyLocationCandidateNames.first, "New York")
+        XCTAssertEqual(result.bounds, PlaceSearchBounds(south: 40.756, west: -73.987, north: 40.76, east: -73.983))
+    }
+
+    func testSearchPresentationOnlyShowsTemporaryMarkerForPOI() {
+        XCTAssertFalse(PlaceSearchPresentation.showsTemporaryMarker(for: .country))
+        XCTAssertFalse(PlaceSearchPresentation.showsTemporaryMarker(for: .administrativeArea))
+        XCTAssertFalse(PlaceSearchPresentation.showsTemporaryMarker(for: .locality))
+        XCTAssertTrue(PlaceSearchPresentation.showsTemporaryMarker(for: .poi))
+    }
+
+    func testSearchViewportUsesBoundsOrCategoryLevelZoom() {
+        let bounded = PlaceSearchViewportPolicy.viewport(
+            category: .country,
+            latitude: 46.2,
+            longitude: 2.2,
+            bounds: PlaceSearchBounds(south: 41, west: -5, north: 51, east: 9)
+        )
+        XCTAssertEqual(bounded.latitudeDelta, 12, accuracy: 0.001)
+        XCTAssertEqual(bounded.longitudeDelta, 16.8, accuracy: 0.001)
+
+        let city = PlaceSearchViewportPolicy.viewport(
+            category: .locality,
+            latitude: 35.6762,
+            longitude: 139.6503,
+            bounds: nil
+        )
+        XCTAssertEqual(city.latitudeDelta, 0.45, accuracy: 0.001)
+        XCTAssertEqual(city.longitudeDelta, 0.45, accuracy: 0.001)
+    }
+
+    func testUserMapNavigationConsumesSearchViewportIntent() {
+        var intent = MapViewportIntent()
+        let london = PlaceSearchViewport(
+            centerLatitude: 51.5072,
+            centerLongitude: -0.1276,
+            latitudeDelta: 0.45,
+            longitudeDelta: 0.45
+        )
+
+        intent.select(london)
+        XCTAssertEqual(intent.viewport, london)
+
+        intent.userNavigationStarted()
+        XCTAssertNil(intent.viewport)
+    }
+
+    func testMapFocusResolutionDoesNotCreateCameraIntentAfterUserNavigation() {
+        var intent = MapViewportIntent()
+        let london = PlaceSearchViewport(
+            centerLatitude: 51.5072,
+            centerLongitude: -0.1276,
+            latitudeDelta: 0.45,
+            longitudeDelta: 0.45
+        )
+        let paris = PlaceSearchViewport(
+            centerLatitude: 48.8566,
+            centerLongitude: 2.3522,
+            latitudeDelta: 0.45,
+            longitudeDelta: 0.45
+        )
+
+        intent.selectionResolved(london, source: .searchResult)
+        XCTAssertEqual(intent.viewport, london)
+        intent.userNavigationStarted()
+        intent.selectionResolved(paris, source: .mapNavigation)
+
+        XCTAssertNil(intent.viewport)
+    }
+
+    func testSameNamedCityCandidateShowsAdministrativeParentAndCountry() {
+        let london = PlaceSearchResult.fixture(
+            provider: .mapKit,
+            displayName: "London",
+            canonicalName: "London",
+            locality: "London",
+            administrativeArea: "Ontario",
+            countryName: "Canada",
+            latitude: 42.9849,
+            longitude: -81.2453
+        )
+
+        XCTAssertEqual(london.parentDisplayNames, ["Ontario", "Canada"])
+    }
+
+    func testPhotonCandidateUsesCountyWhenStateIsMissing() throws {
+        let json = #"{"features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-0.1276,51.5072]},"properties":{"osm_type":"R","osm_id":65606,"type":"city","name":"London","county":"Greater London","country":"United Kingdom","countrycode":"GB"}}]}"#
+
+        let london = try XCTUnwrap(PlaceSearchResponseDecoder.photon(Data(json.utf8)).first)
+
+        XCTAssertEqual(london.parentDisplayNames, ["Greater London", "United Kingdom"])
+    }
+
+    func testRepresentativeCountryAndCityQueriesAreRelevant() {
+        let cases = [
+            ("中国", "中国", "China"), ("China", "China", "China"),
+            ("法国", "法国", "France"), ("France", "France", "France"),
+            ("纽约", "纽约", "New York"), ("New York", "New York", "New York"),
+            ("伦敦", "伦敦", "London"), ("London", "London", "London"),
+            ("东京", "东京", "Tokyo"), ("Tokyo", "Tokyo", "Tokyo"),
+            ("北京", "北京", "Beijing"), ("Beijing", "Beijing", "Beijing"),
+            ("Times Square", "Times Square", "Times Square")
+        ]
+        for (query, display, canonical) in cases {
+            let result = PlaceSearchResult.fixture(
+                provider: .mapKit,
+                displayName: display,
+                canonicalName: canonical,
+                locality: display,
+                countryName: nil,
+                latitude: 1,
+                longitude: 1
+            )
+            XCTAssertTrue(PlaceSearchRelevance.isRelevant(query: query, result: result), query)
+        }
+    }
+
+    func testCountryCodeResolverHandlesSupportedCountryExamples() {
+        XCTAssertEqual(CountryCodeResolver.code(candidateNames: ["中国", "China"]), "CN")
+        XCTAssertEqual(CountryCodeResolver.code(candidateNames: ["France"]), "FR")
+        XCTAssertEqual(CountryCodeResolver.code(candidateNames: ["日本", "Japan"]), "JP")
+        XCTAssertEqual(CountryCodeResolver.code(candidateNames: ["美国", "United States"]), "US")
+    }
     func testTraditionalChineseDoesNotSilentlyUseSimplifiedChinese() {
         let texts = [
             MovieText(languageCode: "zh-Hans", title: "简体", overview: ""),
@@ -406,4 +780,38 @@ final class CoreRulesTests: XCTestCase {
         )
     }
 
+}
+
+private actor SearchProviderCallLog {
+    private(set) var values: [PlaceSearchProvider] = []
+    func record(_ value: PlaceSearchProvider) { values.append(value) }
+}
+
+private extension PlaceSearchResult {
+    static func fixture(
+        provider: PlaceSearchProvider,
+        providerPlaceID: String = UUID().uuidString,
+        displayName: String,
+        canonicalName: String,
+        category: PlaceSearchCategory = .locality,
+        locality: String?,
+        administrativeArea: String? = nil,
+        countryName: String?,
+        latitude: Double,
+        longitude: Double
+    ) -> PlaceSearchResult {
+        PlaceSearchResult(
+            provider: provider,
+            providerPlaceID: providerPlaceID,
+            displayName: displayName,
+            canonicalName: canonicalName,
+            category: category,
+            latitude: latitude,
+            longitude: longitude,
+            locality: locality,
+            administrativeArea: administrativeArea,
+            countryName: countryName,
+            countryCode: nil
+        )
+    }
 }

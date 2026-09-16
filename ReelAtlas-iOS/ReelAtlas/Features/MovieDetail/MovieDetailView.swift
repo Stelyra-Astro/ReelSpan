@@ -127,6 +127,12 @@ struct MovieDetailView: View {
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
 
+                if movie.rating > 0 {
+                    Label(String(format: "TMDB %.1f", movie.rating), systemImage: "star.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
                 Button { model.toggleFavorite(movie.id) } label: {
                     Label(
                         model.favoriteIDs.contains(movie.id)

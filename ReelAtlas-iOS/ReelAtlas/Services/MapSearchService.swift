@@ -7,101 +7,83 @@ struct MapSearchSuggestion: Identifiable {
     let id: String
     let title: String
     let subtitle: String
-    fileprivate let completion: MKLocalSearchCompletion?
-    fileprivate let selection: MapSearchSelection?
+    fileprivate let selection: MapSearchSelection
 
-    init(completion: MKLocalSearchCompletion) {
-        title = completion.title
-        subtitle = completion.subtitle
-        id = "mapkit|\(title)|\(subtitle)"
-        self.completion = completion
-        selection = nil
-    }
-
-    init(title: String, subtitle: String, selection: MapSearchSelection) {
-        self.id = "resolved|\(title)|\(subtitle)"
+    init(title: String, subtitle: String, selection: MapSearchSelection, id: String? = nil) {
+        self.id = id ?? "resolved|\(title)|\(subtitle)"
         self.title = title
         self.subtitle = subtitle
-        completion = nil
         self.selection = selection
+    }
+
+    init(result: PlaceSearchResult) {
+        self.init(
+            title: result.displayName,
+            subtitle: result.parentDisplayNames.joined(separator: " · "),
+            selection: MapSearchSelection(result: result),
+            id: "\(result.provider.rawValue)|\(result.providerPlaceID)"
+        )
     }
 }
 
 @MainActor
-final class AdministrativePlaceSearch: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+final class AdministrativePlaceSearch: ObservableObject {
     @Published private(set) var suggestions: [MapSearchSuggestion] = []
+    @Published private(set) var isSearching = false
 
-    private let completer = MKLocalSearchCompleter()
-    private var currentQuery = ""
-    private var requestTracker = SearchRequestTracker()
+    private var task: Task<Void, Never>?
+    private var generation = UUID()
 
-    override init() {
-        super.init()
-        completer.delegate = self
-        completer.resultTypes = [.address]
-        completer.region = MapSearchService.globalSearchRegion
-        if #available(iOS 18.0, *) {
-            completer.addressFilter = MKAddressFilter(including: [
-                .country,
-                .administrativeArea,
-                .subAdministrativeArea,
-                .locality
-            ])
-        }
-    }
-
-    func update(query: String) {
+    func update(query: String, language: String) {
+        cancel(clearResults: true)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        currentQuery = trimmed
-        _ = requestTracker.update(trimmed)
-        guard trimmed.count >= 2 else {
-            suggestions = []
-            completer.queryFragment = ""
-            return
-        }
-        completer.queryFragment = trimmed
-    }
-
-    func clear() {
-        currentQuery = ""
-        _ = requestTracker.update("")
-        suggestions = []
-        completer.queryFragment = ""
-    }
-
-    func submit(query: String) async {
-        update(query: query)
-        let requestedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard requestedQuery.count >= 2,
-              requestTracker.accepts(requestedQuery) else { return }
-        guard let resolved = try? await MapSearchService.suggestions(for: query) else { return }
-        guard requestTracker.accepts(requestedQuery) else { return }
-        var seen = Set(suggestions.map(\.id))
-        suggestions.append(contentsOf: resolved.filter { seen.insert($0.id).inserted })
-    }
-
-    nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        let results = completer.results
-        Task { @MainActor [weak self] in
-            guard let self, self.currentQuery.count >= 2 else { return }
-            var seen = Set<String>()
-            self.suggestions = results.compactMap { completion in
-                guard AdministrativePlaceNameMatcher.rank(
-                    query: self.currentQuery,
-                    names: [completion.title, completion.subtitle]
-                ) != nil else { return nil }
-                let key = "\(completion.title)|\(completion.subtitle)".folding(
-                    options: [.caseInsensitive, .diacriticInsensitive],
-                    locale: .current
-                )
-                guard seen.insert(key).inserted else { return nil }
-                return MapSearchSuggestion(completion: completion)
+        guard trimmed.count >= 2 else { return }
+        let request = generation
+        isSearching = true
+        task = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+                let values = try await MapSearchService.suggestions(for: trimmed, language: language)
+                try Task.checkCancellation()
+                guard let self, generation == request else { return }
+                suggestions = values
+                isSearching = false
+            } catch {
+                guard let self, generation == request, !Task.isCancelled else { return }
+                suggestions = []
+                isSearching = false
             }
         }
     }
 
-    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        Task { @MainActor [weak self] in self?.suggestions = [] }
+    func submit(query: String, language: String) async {
+        cancel(clearResults: true)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return }
+        let request = generation
+        isSearching = true
+        do {
+            let values = try await MapSearchService.suggestions(for: trimmed, language: language)
+            guard generation == request, !Task.isCancelled else { return }
+            suggestions = values
+            isSearching = false
+        } catch {
+            guard generation == request, !Task.isCancelled else { return }
+            suggestions = []
+            isSearching = false
+        }
+    }
+
+    func clear() {
+        cancel(clearResults: true)
+    }
+
+    private func cancel(clearResults: Bool) {
+        generation = UUID()
+        task?.cancel()
+        task = nil
+        isSearching = false
+        if clearResults { suggestions = [] }
     }
 }
 
@@ -110,9 +92,61 @@ struct MapSearchSelection {
     let coordinate: CLLocationCoordinate2D
     let candidateDatabaseNames: [String]
     let countryFallbackName: String?
+    let category: PlaceSearchCategory
+    let countryCode: String?
+    let bounds: PlaceSearchBounds?
+    let localityName: String?
+
+    init(
+        displayName: String,
+        coordinate: CLLocationCoordinate2D,
+        candidateDatabaseNames: [String],
+        countryFallbackName: String?,
+        category: PlaceSearchCategory = .locality,
+        countryCode: String? = nil,
+        bounds: PlaceSearchBounds? = nil,
+        localityName: String? = nil
+    ) {
+        self.displayName = displayName
+        self.coordinate = coordinate
+        self.candidateDatabaseNames = candidateDatabaseNames
+        self.countryFallbackName = countryFallbackName
+        self.category = category
+        self.countryCode = countryCode
+        self.bounds = bounds
+        self.localityName = localityName
+    }
+
+    init(result: PlaceSearchResult) {
+        self.init(
+            displayName: result.displayName,
+            coordinate: CLLocationCoordinate2D(latitude: result.latitude, longitude: result.longitude),
+            candidateDatabaseNames: result.storyLocationCandidateNames,
+            countryFallbackName: result.countryName,
+            category: result.category,
+            countryCode: result.countryCode,
+            bounds: result.bounds,
+            localityName: result.locality
+        )
+    }
+
+    var viewport: PlaceSearchViewport {
+        PlaceSearchViewportPolicy.viewport(
+            category: category,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            bounds: bounds
+        )
+    }
+
+    var showsTemporaryMarker: Bool {
+        PlaceSearchPresentation.showsTemporaryMarker(for: category)
+    }
 }
 
 enum MapSearchService {
+    private static let timeout: Duration = .seconds(6)
+
     static let globalSearchRegion = MKCoordinateRegion(
         center: AdministrativePlaceSearchPolicy.regionCenter,
         span: MKCoordinateSpan(
@@ -122,89 +156,130 @@ enum MapSearchService {
     )
 
     static func resolve(_ suggestion: MapSearchSuggestion) async throws -> MapSearchSelection {
-        if let selection = suggestion.selection { return selection }
-        guard let completion = suggestion.completion else {
-            throw NSError(domain: "ReelAtlas.MapSearch", code: 404, userInfo: [NSLocalizedDescriptionKey: L10n.text("home.search_failed")])
-        }
-        let request = MKLocalSearch.Request(completion: completion)
-        request.resultTypes = [.address]
-        if #available(iOS 18.0, *) {
-            request.addressFilter = MKAddressFilter(including: [
-                .country,
-                .administrativeArea,
-                .subAdministrativeArea,
-                .locality
-            ])
-        }
-        let response = try await MKLocalSearch(request: request).start()
-        guard let item = response.mapItems.first(where: { item in
-            let placemark = item.placemark
-            return placemark.locality != nil ||
-                placemark.subAdministrativeArea != nil ||
-                placemark.administrativeArea != nil ||
-                placemark.country != nil
-        }) else {
-            throw NSError(domain: "ReelAtlas.MapSearch", code: 404, userInfo: [NSLocalizedDescriptionKey: L10n.text("home.search_failed")])
-        }
-        let p = item.placemark
-        let hierarchy = AdministrativeLocationHierarchy(
-            pointOfInterestName: item.name,
-            locality: p.locality,
-            subLocality: p.subLocality,
-            subAdministrativeArea: p.subAdministrativeArea,
-            administrativeArea: p.administrativeArea,
-            country: p.country
-        )
-        let display = p.locality ?? p.subAdministrativeArea ?? p.administrativeArea ?? p.country ?? suggestion.title
+        let selection = suggestion.selection
+        guard selection.category == .poi, selection.localityName == nil else { return selection }
+        guard let reverse = try? await reverseLookup(selection.coordinate),
+              reverse.localityName != nil else { throw SearchError.noResults }
         return MapSearchSelection(
-            displayName: display,
-            coordinate: p.coordinate,
-            candidateDatabaseNames: hierarchy.databaseCandidateNames,
-            countryFallbackName: hierarchy.countryFallbackName
+            displayName: selection.displayName,
+            coordinate: selection.coordinate,
+            candidateDatabaseNames: reverse.candidateDatabaseNames,
+            countryFallbackName: selection.countryFallbackName ?? reverse.countryFallbackName,
+            category: .poi,
+            countryCode: selection.countryCode ?? reverse.countryCode,
+            bounds: selection.bounds,
+            localityName: reverse.localityName
         )
     }
 
-    static func suggestions(for query: String) async throws -> [MapSearchSuggestion] {
+    static func suggestions(for query: String, language: String) async throws -> [MapSearchSuggestion] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
+        guard trimmed.count >= 2 else { return [] }
+        let results = try await PlaceSearchPipeline.search(
+            query: trimmed,
+            mapKit: { try await mapKit(query: trimmed) },
+            photon: { try await photon(query: trimmed, language: language) },
+            geoNames: { try await geoNames(query: trimmed, language: language) }
+        )
+        return results.prefix(10).map(MapSearchSuggestion.init(result:))
+    }
 
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = trimmed
-        request.resultTypes = [.address]
-        request.region = globalSearchRegion
-        if #available(iOS 18.0, *) {
-            request.addressFilter = MKAddressFilter(including: [
-                .country,
-                .administrativeArea,
-                .subAdministrativeArea,
-                .locality
-            ])
+    private static func mapKit(query: String) async throws -> [PlaceSearchResult] {
+        try await withTimeout {
+            let request = MKLocalSearch.Request()
+            request.naturalLanguageQuery = query
+            request.resultTypes = [.address, .pointOfInterest]
+            request.region = globalSearchRegion
+            let response = try await MKLocalSearch(request: request).start()
+            return response.mapItems.prefix(10).compactMap(mapKitResult)
+        }
+    }
+
+    private static func mapKitResult(_ item: MKMapItem) -> PlaceSearchResult? {
+        let placemark = item.placemark
+        let itemName = item.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let category: PlaceSearchCategory
+        if item.pointOfInterestCategory != nil {
+            category = .poi
+        } else if placemark.locality != nil {
+            let administrativeNames = [placemark.locality, placemark.administrativeArea, placemark.country]
+                .compactMap { $0 }
+            category = itemName.map { name in
+                administrativeNames.contains { $0.localizedCaseInsensitiveCompare(name) == .orderedSame }
+                    ? .locality : .poi
+            } ?? .locality
+        } else if placemark.subAdministrativeArea != nil || placemark.administrativeArea != nil {
+            category = .administrativeArea
+        } else if placemark.country != nil {
+            category = .country
+        } else {
+            category = .poi
         }
 
-        let response = try await MKLocalSearch(request: request).start()
-        var seen = Set<String>()
-        return response.mapItems.compactMap { item in
-            let p = item.placemark
-            let hierarchy = AdministrativeLocationHierarchy(
-                pointOfInterestName: item.name,
-                locality: p.locality,
-                subLocality: p.subLocality,
-                subAdministrativeArea: p.subAdministrativeArea,
-                administrativeArea: p.administrativeArea,
-                country: p.country
-            )
-            guard AdministrativePlaceNameMatcher.rank(query: trimmed, names: hierarchy.databaseCandidateNames) != nil,
-                  let title = hierarchy.databaseCandidateNames.first else { return nil }
-            let subtitle = hierarchy.databaseCandidateNames.dropFirst().joined(separator: " · ")
-            let key = "\(title)|\(subtitle)".folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            guard seen.insert(key).inserted else { return nil }
-            let selection = MapSearchSelection(
-                displayName: title,
-                coordinate: p.coordinate,
-                candidateDatabaseNames: hierarchy.databaseCandidateNames,
-                countryFallbackName: hierarchy.countryFallbackName
-            )
-            return MapSearchSuggestion(title: title, subtitle: subtitle, selection: selection)
+        let displayName: String?
+        switch category {
+        case .poi: displayName = itemName
+        case .locality: displayName = placemark.locality ?? itemName
+        case .administrativeArea: displayName = placemark.subAdministrativeArea ?? placemark.administrativeArea ?? itemName
+        case .country: displayName = placemark.country ?? itemName
+        }
+        guard let displayName, !displayName.isEmpty else { return nil }
+        let coordinate = placemark.coordinate
+        return PlaceSearchResult(
+            provider: .mapKit,
+            providerPlaceID: "\(displayName)|\(coordinate.latitude)|\(coordinate.longitude)",
+            displayName: displayName,
+            canonicalName: displayName,
+            category: category,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            locality: placemark.locality,
+            administrativeArea: placemark.administrativeArea ?? placemark.subAdministrativeArea,
+            countryName: placemark.country,
+            countryCode: placemark.isoCountryCode
+        )
+    }
+
+    private static func photon(query: String, language: String) async throws -> [PlaceSearchResult] {
+        guard let url = PlaceSearchEndpoint.photon(query: query, language: language) else {
+            throw SearchError.invalidURL
+        }
+        return try PlaceSearchResponseDecoder.photon(await request(url))
+    }
+
+    private static func geoNames(query: String, language: String) async throws -> [PlaceSearchResult] {
+        guard let url = PlaceSearchEndpoint.geoNames(query: query, language: language) else {
+            throw SearchError.invalidURL
+        }
+        return try PlaceSearchResponseDecoder.geoNames(await request(url))
+    }
+
+    private static func request(_ url: URL) async throws -> Data {
+        try await withTimeout {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 6
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200 ..< 300).contains(http.statusCode) else {
+                throw SearchError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? -1)
+            }
+            return data
+        }
+    }
+
+    private static func withTimeout<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw SearchError.timeout
+            }
+            guard let value = try await group.next() else { throw SearchError.timeout }
+            group.cancelAll()
+            return value
         }
     }
 
@@ -217,23 +292,31 @@ enum MapSearchService {
             CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude),
             preferredLocale: preferredLocale
         )
-        guard let p = placemarks.first else {
-            throw NSError(domain: "ReelAtlas.MapSearch", code: 404, userInfo: [NSLocalizedDescriptionKey: L10n.text("home.search_failed")])
-        }
-        let display = p.locality ?? p.subAdministrativeArea ?? p.administrativeArea ?? p.country ?? String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
+        guard let placemark = placemarks.first else { throw SearchError.noResults }
+        let displayName = placemark.locality ?? placemark.subAdministrativeArea
+            ?? placemark.administrativeArea ?? placemark.country
+            ?? String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
         let hierarchy = AdministrativeLocationHierarchy(
-            pointOfInterestName: p.name,
-            locality: p.locality,
-            subLocality: p.subLocality,
-            subAdministrativeArea: p.subAdministrativeArea,
-            administrativeArea: p.administrativeArea,
-            country: p.country
+            locality: placemark.locality,
+            subAdministrativeArea: placemark.subAdministrativeArea,
+            administrativeArea: placemark.administrativeArea,
+            country: placemark.country
         )
         return MapSearchSelection(
-            displayName: display,
+            displayName: displayName,
             coordinate: coordinate,
             candidateDatabaseNames: hierarchy.databaseCandidateNames,
-            countryFallbackName: hierarchy.countryFallbackName
+            countryFallbackName: hierarchy.countryFallbackName,
+            category: .locality,
+            countryCode: placemark.isoCountryCode,
+            localityName: placemark.locality
         )
+    }
+
+    private enum SearchError: Error {
+        case invalidURL
+        case noResults
+        case timeout
+        case httpStatus(Int)
     }
 }

@@ -28,6 +28,35 @@ struct StoryLocation: Identifiable, Hashable, Sendable {
     var id: String { rawPlaceQID }
     let rawPlaceQID: String
     let name: String
+    let latitude: Double?
+    let longitude: Double?
+
+    init(rawPlaceQID: String, name: String, latitude: Double? = nil, longitude: Double? = nil) {
+        self.rawPlaceQID = rawPlaceQID
+        self.name = name
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let latitude, let longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+enum MovieLocationScope: Hashable, Sendable {
+    case place(targetQID: String)
+    case country(countryCode: String, countryQID: String)
+}
+
+struct SearchSelectionMarker: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let coordinate: CLLocationCoordinate2D
+
+    static func == (lhs: SearchSelectionMarker, rhs: SearchSelectionMarker) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 struct MovieViewData: Identifiable, Hashable, Sendable {
@@ -153,6 +182,7 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
 struct MoviePage: Sendable {
     let movies: [MovieViewData]
     let hasMore: Bool
+    let storyLocations: [StoryLocation]
 
-    static let empty = MoviePage(movies: [], hasMore: false)
+    static let empty = MoviePage(movies: [], hasMore: false, storyLocations: [])
 }

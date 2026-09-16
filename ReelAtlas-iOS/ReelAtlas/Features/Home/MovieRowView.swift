@@ -35,9 +35,15 @@ struct MovieRowView: View {
                     .accessibilityLabel(Text(isFavorite ? "movie.favorite.added" : "movie.favorite.add"))
                 }
 
-                Text("\(movie.releaseYearText) · \(L10n.runtime(movie.runtimeMinutes))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text("\(movie.releaseYearText) · \(L10n.runtime(movie.runtimeMinutes))")
+                    if movie.rating > 0 {
+                        Label(String(format: "TMDB %.1f", movie.rating), systemImage: "star.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 if movie.genres.isEmpty {
                     FlowTags(tags: [L10n.text("movie.genre.unknown")])
