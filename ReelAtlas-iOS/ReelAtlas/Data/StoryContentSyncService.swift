@@ -1,107 +1,209 @@
 import Foundation
 import SQLite3
 
+/// Initial 250 films are committed before the UI is released; remaining pages are resumable.
 actor StoryContentSyncService {
     struct Manifest: Decodable {
         let version: Int
         let sourceVersion: String
-
+        let rowCounts: [String: Int]
         enum CodingKeys: String, CodingKey {
-            case version
-            case sourceVersion = "source_version"
+            case version, rowCounts = "row_counts", sourceVersion = "source_version"
         }
+    }
+
+    struct SyncProgress: Sendable {
+        let downloaded: Int
+        let total: Int
+        let isComplete: Bool
     }
 
     private let baseURL = URL(string: "https://injisguyqfxfwgnbtghe.supabase.co/rest/v1")!
     private let publishableKey = "sb_publishable_OEEsH_hGwuWAsLoh95SiXw_mbj3D6i2"
     private let pageSize = 1_000
+    private let batchSize = 250
+    private let formatVersion = "full-catalog-v2"
 
     func ensureCurrentContent() async throws -> URL {
         let destination = try ContentRepository.cacheURL()
         do {
             let manifest = try await fetchManifest()
+            let expected = manifest.sourceVersion + ":" + formatVersion
             if FileManager.default.fileExists(atPath: destination.path),
-               ContentRepository.metadataVersion(at: destination) == manifest.sourceVersion {
-                return destination
+               Self.value(at: destination, key: "sync_target_version") == expected {
+                return destination  // Complete or interrupted: synchronizeRemaining() handles the cursor.
             }
-            return try await rebuildCache(destination: destination, manifest: manifest)
+            try await rebuildFirstBatch(destination: destination, manifest: manifest)
+            return destination
         } catch {
-            if FileManager.default.fileExists(atPath: destination.path) {
-                return destination
-            }
+            // Do not destroy a usable published snapshot on a transient network error.
+            if FileManager.default.fileExists(atPath: destination.path) { return destination }
             throw error
+        }
+    }
+
+    func progress() throws -> SyncProgress {
+        let url = try ContentRepository.cacheURL()
+        let total = Int(Self.value(at: url, key: "sync_total") ?? "") ?? 0
+        let downloaded = Int(Self.value(at: url, key: "sync_downloaded") ?? "") ?? 0
+        return SyncProgress(downloaded: downloaded, total: total,
+                            isComplete: Self.value(at: url, key: "sync_complete") == "1")
+    }
+
+    /// Called after the initial view appears; iOS may suspend it in the background, so checkpoint each page.
+    func synchronizeRemaining(onBatch: @escaping @Sendable (SyncProgress) async -> Void) async {
+        guard let manifest = try? await fetchManifest(),
+              let url = try? ContentRepository.cacheURL(),
+              Self.value(at: url, key: "sync_target_version") == manifest.sourceVersion + ":" + formatVersion,
+              Self.value(at: url, key: "sync_complete") != "1" else { return }
+        var cursor = Int(Self.value(at: url, key: "sync_cursor") ?? "") ?? 0
+        let total = manifest.rowCounts["story_movies"] ?? 0
+        while !Task.isCancelled {
+            do {
+                let batch = try await fetchMovieBatch(after: cursor)
+                let last = batch.last.flatMap { ($0["legacy_id"] as? NSNumber)?.intValue } ?? cursor
+                let completed = batch.count < batchSize
+                try await importBatch(at: url, movies: batch, cursor: last,
+                                      total: total, target: manifest.sourceVersion + ":" + formatVersion,
+                                      version: manifest.sourceVersion, complete: completed)
+                cursor = last
+                let state = try progress()
+                await onBatch(state)
+                if completed { return }
+            } catch {
+                // Retain the last committed cursor and continue next foreground launch.
+                return
+            }
         }
     }
 
     private func fetchManifest() async throws -> Manifest {
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent("dataset_meta"),
-            resolvingAgainstBaseURL: false
-        )!
-        components.queryItems = [
-            URLQueryItem(name: "dataset_name", value: "eq.reelspan_story_content"),
-            URLQueryItem(name: "select", value: "version,source_version")
-        ]
+        var components = URLComponents(url: baseURL.appendingPathComponent("dataset_meta"),
+                                       resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "dataset_name", value: "eq.reelspan_story_content"),
+                                 URLQueryItem(name: "select", value: "version,source_version,row_counts")]
         let data = try await request(components.url!)
         guard let manifest = try JSONDecoder().decode([Manifest].self, from: data).first,
               !manifest.sourceVersion.isEmpty else {
-            throw SQLiteError.open("ReelSpan content manifest is unavailable")
+            throw SQLiteError.open("Published content manifest is unavailable")
         }
         return manifest
     }
 
-    private func rebuildCache(destination: URL, manifest: Manifest) async throws -> URL {
-        let matchRows = try await rows(table: "story_movie_target_matches")
-        guard let scope = ContentBootstrapScope(
-            movieQIDs: matchRows.compactMap { $0["movie_qid"] as? String }
-        ) else {
-            throw SQLiteError.open("ReelSpan content has no published movie matches")
+    private func fetchMovieBatch(after cursor: Int) async throws -> [[String: Any]] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("story_movies"),
+                                       resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "select", value: "*"),
+                                 URLQueryItem(name: "is_deleted", value: "eq.false"),
+                                 URLQueryItem(name: "legacy_id", value: "gt.\(cursor)"),
+                                 URLQueryItem(name: "order", value: "legacy_id.asc"),
+                                 URLQueryItem(name: "limit", value: String(batchSize))]
+        guard let result = try JSONSerialization.jsonObject(with: try await request(components.url!)) as? [[String: Any]] else {
+            throw SQLiteError.step("Invalid movie page")
         }
-        let movieFilter = URLQueryItem(name: "movie_qid", value: scope.postgRESTMovieFilter)
-        let locationRows = try await rows(table: "story_movie_locations", filters: [movieFilter])
-        let placeKeys = [
-            "raw_place_qid", "historical_capital_qid", "modern_place_qid",
-            "city_qid", "admin1_qid", "country_qid"
-        ]
-        let referencedPlaceQIDs = matchRows.compactMap { $0["target_qid"] as? String }
-            + locationRows.flatMap { row in placeKeys.compactMap { row[$0] as? String } }
-        guard let placeFilter = ContentBootstrapScope.postgRESTFilter(qids: referencedPlaceQIDs) else {
-            throw SQLiteError.open("ReelSpan content has no published locations")
-        }
+        return result
+    }
+
+    private func rebuildFirstBatch(destination: URL, manifest: Manifest) async throws {
         guard let schemaURL = Bundle.main.url(forResource: "schema", withExtension: "sql") else {
             throw SQLiteError.open("Content cache schema is missing")
         }
-        let replacement = destination.deletingLastPathComponent()
-            .appendingPathComponent("content-replacement.sqlite")
+        let replacement = destination.deletingLastPathComponent().appendingPathComponent("content-replacement.sqlite")
         try? FileManager.default.removeItem(at: replacement)
-        let database = try SQLiteDatabase(url: replacement, readOnly: false)
-        try database.execute(String(contentsOf: schemaURL, encoding: .utf8))
-        try database.execute("BEGIN IMMEDIATE")
         do {
-            try await importTargets(database)
-            try await importMovies(database, scope: scope)
-            try await importPlaces(database, placeFilter: placeFilter)
-            try importTargetMatches(database, rows: matchRows)
-            try importLocations(database, rows: locationRows)
-            try await importPeriods(database, scope: scope)
-            try database.execute(
-                "INSERT OR REPLACE INTO metadata(key,value) VALUES " +
-                "('source_format','supabase-story-content-v1')," +
-                "('database_version','\(sqlQuoted(manifest.sourceVersion))')," +
-                "('supabase_version','\(manifest.version)')"
-            )
-            try database.execute("COMMIT")
+            // Keep replacement private until the complete first batch is committed.
+            do {
+                let db = try SQLiteDatabase(url: replacement, readOnly: false)
+                try db.execute(String(contentsOf: schemaURL, encoding: .utf8))
+                try db.execute("BEGIN IMMEDIATE")
+                do {
+                    try await importTargets(db)
+                    try await importPlaces(db)
+                    try await importTimeConcepts(db)
+                    try db.execute("COMMIT")
+                } catch {
+                    try? db.execute("ROLLBACK")
+                    throw error
+                }
+            }
+            let first = try await fetchMovieBatch(after: 0)
+            guard !first.isEmpty else { throw SQLiteError.open("Published catalog has no films") }
+            let cursor = (first.last?["legacy_id"] as? NSNumber)?.intValue ?? 0
+            try await importBatch(at: replacement, movies: first, cursor: cursor,
+                                  total: manifest.rowCounts["story_movies"] ?? 0,
+                                  target: manifest.sourceVersion + ":" + formatVersion,
+                                  version: manifest.sourceVersion, complete: first.count < batchSize)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: replacement)
+            } else {
+                try FileManager.default.moveItem(at: replacement, to: destination)
+            }
         } catch {
-            try? database.execute("ROLLBACK")
             try? FileManager.default.removeItem(at: replacement)
             throw error
         }
-        if FileManager.default.fileExists(atPath: destination.path) {
-            _ = try FileManager.default.replaceItemAt(destination, withItemAt: replacement)
-        } else {
-            try FileManager.default.moveItem(at: replacement, to: destination)
+    }
+
+    private func importBatch(at url: URL, movies: [[String: Any]], cursor: Int,
+                             total: Int, target: String, version: String, complete: Bool) async throws {
+        let qids = movies.compactMap { $0["movie_qid"] as? String }
+        let filter = "in.(\(qids.joined(separator: ",")))"
+        let locations = qids.isEmpty ? [] : try await rows(table: "story_movie_locations",
+                      filters: [URLQueryItem(name: "movie_qid", value: filter)])
+        let periods = qids.isEmpty ? [] : try await rows(table: "story_movie_periods",
+                      filters: [URLQueryItem(name: "movie_qid", value: filter)])
+        let matches = qids.isEmpty ? [] : try await rows(table: "story_movie_target_matches",
+                      filters: [URLQueryItem(name: "movie_qid", value: filter)])
+        let db = try SQLiteDatabase(url: url, readOnly: false)
+        try db.execute("BEGIN IMMEDIATE")
+        do {
+            try importMovies(db, rows: movies)
+            try importLocations(db, rows: locations)
+            try importPeriods(db, rows: periods)
+            try importTargetMatches(db, rows: matches)
+            let nextCount = try movieCount(db)
+            for (key, value) in ["sync_target_version": target, "sync_cursor": String(cursor),
+                                 "sync_downloaded": String(nextCount), "sync_total": String(total),
+                                 "sync_complete": complete ? "1" : "0",
+                                 "database_version": complete ? version : "Syncing \(version)",
+                                 "source_format": "supabase-story-content-full-v2"] {
+                try insert(db,"INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)",[.text(key),.text(value)])
+            }
+            try db.execute("COMMIT")
+        } catch {
+            try? db.execute("ROLLBACK")
+            throw error
         }
-        return destination
+    }
+
+    private func movieCount(_ db: SQLiteDatabase) throws -> Int {
+        let stmt = try db.prepare("SELECT count(*) FROM movies")
+        defer { sqlite3_finalize(stmt) }
+        return try db.step(stmt) ? db.int(stmt,0) : 0
+    }
+
+    private static func value(at url: URL, key: String) -> String? {
+        guard let db = try? SQLiteDatabase(url: url, readOnly: true),
+              let stmt = try? db.prepare("SELECT value FROM metadata WHERE key=?", bindings: [.text(key)]) else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        guard (try? db.step(stmt)) == true else { return nil }
+        return db.text(stmt,0)
+    }
+
+    private func importTimeConcepts(_ database: SQLiteDatabase) async throws {
+        try await forEachRow(table: "story_time_concepts") { row in
+            try self.insert(database, """
+                INSERT INTO time_concepts(concept_qid,category,name_en,name_zh,labels_json,start_year,end_year)
+                VALUES(?,?,?,?,?,?,?)
+                """, [
+                    .text(self.requiredString(row,"concept_qid")),
+                    .text(self.requiredString(row,"category")),
+                    .text(self.requiredString(row,"name_en")),
+                    .text(self.requiredString(row,"name_zh")),
+                    .text(try self.jsonString(row["labels"])),
+                    self.optionalInt(row["start_year"]),self.optionalInt(row["end_year"])
+                ])
+        }
     }
 
     private func importTargets(_ database: SQLiteDatabase) async throws {
@@ -127,11 +229,8 @@ actor StoryContentSyncService {
         }
     }
 
-    private func importMovies(_ database: SQLiteDatabase, scope: ContentBootstrapScope) async throws {
-        try await forEachRow(
-            table: "story_movies",
-            filters: [URLQueryItem(name: "movie_qid", value: scope.postgRESTMovieFilter)]
-        ) { row in
+    private func importMovies(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
+        for row in rows {
             let qid = self.requiredString(row, "movie_qid")
             try self.insert(database, """
             INSERT INTO movies(
@@ -150,11 +249,8 @@ actor StoryContentSyncService {
         }
     }
 
-    private func importPlaces(_ database: SQLiteDatabase, placeFilter: String) async throws {
-        try await forEachRow(
-            table: "story_places",
-            filters: [URLQueryItem(name: "place_qid", value: placeFilter)]
-        ) { row in
+    private func importPlaces(_ database: SQLiteDatabase) async throws {
+        try await forEachRow(table: "story_places") { row in
             try self.insert(database, """
             INSERT INTO places(
               place_qid,name_en,name_zh,labels_json,type_qids_json,p131_qids_json,
@@ -222,11 +318,8 @@ actor StoryContentSyncService {
         }
     }
 
-    private func importPeriods(_ database: SQLiteDatabase, scope: ContentBootstrapScope) async throws {
-        try await forEachRow(
-            table: "story_movie_periods",
-            filters: [URLQueryItem(name: "movie_qid", value: scope.postgRESTMovieFilter)]
-        ) { row in
+    private func importPeriods(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
+        for row in rows {
             try self.insert(database, """
             INSERT INTO movie_periods(
               movie_qid,period_qid,period_name_en,period_name_zh,period_labels_json,
@@ -255,7 +348,8 @@ actor StoryContentSyncService {
             "story_places": "place_qid.asc",
             "story_movie_target_matches": "movie_qid.asc,target_qid.asc",
             "story_movie_locations": "id.asc",
-            "story_movie_periods": "movie_qid.asc,period_qid.asc"
+            "story_movie_periods": "movie_qid.asc,period_qid.asc",
+            "story_time_concepts": "concept_qid.asc"
         ][table]!
         var offset = 0
         while true {

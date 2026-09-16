@@ -43,6 +43,25 @@ final class ContentRepository {
         return db.text(statement, 0) ?? "Unknown"
     }
 
+    func timeConcepts(preferredLanguage: String) -> [TimeConcept] {
+        let sql = "SELECT concept_qid,category,name_en,name_zh,labels_json,start_year,end_year FROM time_concepts WHERE start_year IS NOT NULL AND end_year IS NOT NULL ORDER BY name_en"
+        guard let stmt = try? db.prepare(sql) else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var concepts: [TimeConcept] = []
+        while (try? db.step(stmt)) == true {
+            let nameEN = db.text(stmt, 2) ?? ""
+            let nameZH = db.text(stmt, 3) ?? nameEN
+            let localized = CSVContentDecoder.localizedLabel(
+                json: db.text(stmt, 4) ?? "{}", preferredLanguage: preferredLanguage)
+            let name = localized ?? (preferredLanguage.hasPrefix("zh") ? nameZH : nameEN)
+            concepts.append(TimeConcept(
+                qid: db.text(stmt, 0) ?? "", category: db.text(stmt, 1) ?? "era", name: name,
+                startYear: sqlite3_column_type(stmt, 5) == SQLITE_NULL ? nil : db.int(stmt, 5),
+                endYear: sqlite3_column_type(stmt, 6) == SQLITE_NULL ? nil : db.int(stmt, 6)))
+        }
+        return concepts
+    }
+
     func location(id: Int, preferredLanguage: String) -> LocationRecord? {
         if id < 0 {
             let sql = """
@@ -232,7 +251,7 @@ final class ContentRepository {
     func candidateMovies(
         startYear: Int,
         endYear: Int,
-        scope: MovieLocationScope,
+        scope: MovieLocationScope?,
         preferredLanguage: String,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
@@ -249,7 +268,6 @@ final class ContentRepository {
             offset: 0
         )
         .compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
-        .filter { $0.tmdbID != nil }
     }
 
     func searchPage(
@@ -344,7 +362,7 @@ final class ContentRepository {
             movieQID: movieQID,
             imdbID: db.text(statement, 2),
             tmdbID: tmdbID,
-            title: "",
+            title: movieQID,
             overview: "",
             tagline: "",
             overviewSource: "",
@@ -386,7 +404,7 @@ final class ContentRepository {
     private func movieIDs(
         startYear: Int,
         endYear: Int,
-        scope: MovieLocationScope,
+        scope: MovieLocationScope?,
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
         limit: Int,
@@ -400,7 +418,7 @@ final class ContentRepository {
         let locationClause: String
         let locationBindings: [SQLiteBindValue]
         switch scope {
-        case .place(let targetQID):
+        case .some(.place(let targetQID)):
             locationClause = """
             (
                 EXISTS (
@@ -417,7 +435,7 @@ final class ContentRepository {
             )
             """
             locationBindings = [.text(targetQID), .text(targetQID)]
-        case .country(_, let countryQID):
+        case .some(.country(_, let countryQID)):
             locationClause = """
             EXISTS (
                 SELECT 1 FROM movie_locations ml
@@ -425,6 +443,9 @@ final class ContentRepository {
             )
             """
             locationBindings = [.text(countryQID)]
+        case .none:
+            locationClause = "1=1"
+            locationBindings = []
         }
         let sql = """
         SELECT DISTINCT m.id

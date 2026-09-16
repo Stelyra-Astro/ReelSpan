@@ -24,7 +24,6 @@ struct HomeView: View {
     @StateObject private var placeSearch = AdministrativePlaceSearch()
     @State private var searchIsFocused = false
     @State private var movieSearchResults: [MovieViewData] = []
-    @State private var movieSearch = LatestMovieSearch()
     @State private var indexedPlaces: [MapSearchSuggestion] = []
     @State private var placeTask: Task<Void, Never>?
     @State private var movieMappingTask: Task<Void, Never>?
@@ -39,6 +38,9 @@ struct HomeView: View {
 
     var body: some View {
         ZStack {
+            if model.isListMode {
+                FilmListView().environmentObject(model)
+            } else {
             MapReader { proxy in
                 Map(position: $camera) {
                     ForEach(model.storyLocationPins) { location in
@@ -97,11 +99,20 @@ struct HomeView: View {
             .blendMode(.multiply)
             .ignoresSafeArea()
             .allowsHitTesting(false)
+            }
         }
-        .onAppear { updateCamera() }
+        .onAppear { if !model.isListMode { updateCamera() } }
         .task {
             await model.resolveInitialLocation()
-            updateCamera()
+            if !model.isListMode { updateCamera() }
+        }
+        .onChange(of: model.isListMode) { _, showingList in
+            if showingList {
+                drawerState.move(to: .hidden)
+            } else {
+                updateCamera()
+                drawerState.showResults()
+            }
         }
         .onChange(of: model.searchViewport) { _, viewport in
             if viewport != nil { updateCamera() }
@@ -135,17 +146,7 @@ struct HomeView: View {
         .fullScreenCover(item: $selectedSearchMovie, onDismiss: restoreResultsDrawer) { movie in
             MovieDetailView(movie: movie).environmentObject(model)
         }
-        .onChange(of: movieSearch.page) { _, page in
-            movieMappingTask?.cancel()
-            guard let page else { movieSearchResults = []; return }
-            movieMappingTask = Task {
-                let results = await model.searchMovies(page.results)
-                guard !Task.isCancelled else { return }
-                movieSearchResults = results
-            }
-        }
         .onDisappear {
-            movieSearch.cancel()
             placeTask?.cancel()
             movieMappingTask?.cancel()
         }
@@ -164,7 +165,7 @@ struct HomeView: View {
 
     private var resultsSheetIsPresented: Binding<Bool> {
         Binding(
-            get: { drawerState.level != .hidden },
+            get: { !model.isListMode && drawerState.level != .hidden },
             set: { isPresented in
                 if !isPresented { drawerState.move(to: .hidden) }
             }
@@ -227,6 +228,15 @@ struct HomeView: View {
                 }
 
                 roundControlButton(
+                    systemName: "list.bullet",
+                    accessibilityLabel: "Browse as list"
+                ) {
+                    collapseSearch()
+                    drawerState.move(to: .hidden)
+                    model.setListMode(true)
+                }
+
+                roundControlButton(
                     systemName: "gift.fill",
                     accessibilityLabel: "Tip ReelSpan"
                 ) {
@@ -253,7 +263,7 @@ struct HomeView: View {
                         .onChange(of: searchIsFocused) { _, focused in
                             if focused { drawerState.searchFocused() }
                         }
-                        if model.isSearching || placeSearch.isSearching || movieSearch.isPending {
+                        if model.isSearching || placeSearch.isSearching || movieMappingTask != nil {
                             ProgressView().controlSize(.small)
                         }
                     }
@@ -262,11 +272,6 @@ struct HomeView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     if !combinedSearchSuggestions.isEmpty { searchSuggestions }
-                    if movieSearch.error != nil {
-                        Text("Movie search is temporarily unavailable. Try again shortly.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    }
                 }
                 .shadow(radius: 8, y: 3)
             } else {
@@ -402,11 +407,7 @@ struct HomeView: View {
         let indexedPlaces = indexedPlaces.map(UnifiedSearchSuggestion.place)
         let movies = movieSearchResults.map(UnifiedSearchSuggestion.movie)
         let mapPlaces = placeSearch.suggestions.map(UnifiedSearchSuggestion.place)
-        return SearchSuggestionOrder.placesFirst(
-            indexedPlaces: indexedPlaces,
-            mapPlaces: mapPlaces,
-            movies: movies
-        ).filter { suggestion in
+        return (movies + indexedPlaces + mapPlaces).filter { suggestion in
             seen.insert(suggestion.id).inserted
         }
     }
@@ -418,7 +419,10 @@ struct HomeView: View {
             collapseSearch()
             drawerState.searchFinished()
         case .showCandidates:
-            Task { await placeSearch.submit(query: query, language: model.effectiveInterfaceLanguage) }
+            // Submitting text is a full-catalog search; picking an explicit place suggestion navigates the map.
+            model.setGlobalSearch(query)
+            model.setListMode(true)
+            collapseSearch()
         }
     }
 
@@ -577,7 +581,6 @@ struct HomeView: View {
     }
 
     private func collapseSearch() {
-        movieSearch.cancel()
         placeTask?.cancel()
         movieMappingTask?.cancel()
         indexedPlaces = []
@@ -588,15 +591,20 @@ struct HomeView: View {
 
     private func scheduleMovieSearch(_ value: String) {
         movieMappingTask?.cancel()
+        movieMappingTask = nil
         movieSearchResults = []
-        let service = model.metadataStore.service
-        movieSearch.update(value) { query in
-            try await service.search(query: query)
-        }
         placeTask?.cancel()
         indexedPlaces = []
+        guard value.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return }
+        movieMappingTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            let results = await model.unifiedSuggestions(value)
+            guard !Task.isCancelled, query == value else { return }
+            movieSearchResults = results
+            movieMappingTask = nil
+        }
         placeTask = Task {
-            guard value.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return }
             let places = await model.indexedPlaceSuggestions(value)
             guard !Task.isCancelled, query == value else { return }
             indexedPlaces = places
@@ -615,7 +623,7 @@ struct HomeView: View {
     }
 }
 
-private struct FavoritesView: View {
+struct FavoritesView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedMovie: MovieViewData?

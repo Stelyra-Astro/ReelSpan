@@ -17,8 +17,8 @@ public enum StoryTimeAvailabilityMatcher {
 }
 
 public struct StoryTimeSelection: Equatable, Sendable {
-    public static let minimumYear = 1600
-    public static let maximumYear = 2100
+    public static let minimumYear = -7000
+    public static let maximumYear = 3000
 
     public private(set) var startYear: Int
     public private(set) var endYear: Int

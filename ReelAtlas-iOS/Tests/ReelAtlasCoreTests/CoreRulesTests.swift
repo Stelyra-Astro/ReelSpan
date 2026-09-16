@@ -253,24 +253,24 @@ final class CoreRulesTests: XCTestCase {
     }
 
     func testStoryTimeSelectionClampsAndKeepsAnOrderedRange() {
-        var selection = StoryTimeSelection(startYear: 1500, endYear: 2200)
-        XCTAssertEqual(selection.startYear, 1600)
-        XCTAssertEqual(selection.endYear, 2100)
+        var selection = StoryTimeSelection(startYear: -8000, endYear: 4000)
+        XCTAssertEqual(selection.startYear, -7000)
+        XCTAssertEqual(selection.endYear, 3000)
 
         selection.updateStartYear(2050)
         selection.updateEndYear(2000)
         XCTAssertEqual(selection.startYear, 2000)
         XCTAssertEqual(selection.endYear, 2000)
 
-        selection.updateStartYear(2200)
-        XCTAssertEqual(selection.startYear, 2100)
-        XCTAssertEqual(selection.endYear, 2100)
+        selection.updateStartYear(4000)
+        XCTAssertEqual(selection.startYear, 3000)
+        XCTAssertEqual(selection.endYear, 3000)
     }
 
     func testUnknownStoryTimeOnlyAppearsForTheCompleteDefaultRange() {
-        XCTAssertTrue(StoryTimeAvailabilityMatcher.includesUnknown(startYear: 1600, endYear: 2100))
-        XCTAssertFalse(StoryTimeAvailabilityMatcher.includesUnknown(startYear: 1800, endYear: 2100))
-        XCTAssertFalse(StoryTimeAvailabilityMatcher.includesUnknown(startYear: 1600, endYear: 2000))
+        XCTAssertTrue(StoryTimeAvailabilityMatcher.includesUnknown(startYear: -7000, endYear: 3000))
+        XCTAssertFalse(StoryTimeAvailabilityMatcher.includesUnknown(startYear: 1800, endYear: 3000))
+        XCTAssertFalse(StoryTimeAvailabilityMatcher.includesUnknown(startYear: -7000, endYear: 2000))
     }
 
     func testMovieCachePolicyUsesThirtyDayExpiryAnd150MiBLimit() {

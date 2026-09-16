@@ -31,9 +31,11 @@
 		546A149725638EAE0FD29399 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */; };
 		C7374887F0423BFB9474AB50 /* ContentRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */; };
 		A715C0DE0000000000000001 /* StoryContentSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A715C0DE0000000000000002 /* StoryContentSyncService.swift */; };
+		A715C0DE0000000000000003 /* CatalogDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A715C0DE0000000000000004 /* CatalogDiscoveryService.swift */; };
 		7BDBE1CDFD06A2C50B4BE534 /* SQLiteSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */; };
 		9345AD4F8BC1A8C967EF87BA /* UserDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */; };
 		73AC59DC38C4BCAE90CB6A51 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4375501A72C9DE1B1CA7551 /* HomeView.swift */; };
+		A715C0DE0000000000000005 /* FilmListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A715C0DE0000000000000006 /* FilmListView.swift */; };
 		43C410B1320B5E42110E8BD5 /* LocalPosterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DCCA4205B511DAEFF87741 /* LocalPosterView.swift */; };
 		61CA3745500A39737E07867D /* MovieRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 562F87B2992791CAB6868FAE /* MovieRowView.swift */; };
 		F08D810C7806746D3128B323 /* YearPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F170016F747653F1E1D820 /* YearPickerView.swift */; };
@@ -76,9 +78,11 @@
 		6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppModels.swift; path = "ReelAtlas/Data/AppModels.swift"; sourceTree = SOURCE_ROOT; };
 		0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentRepository.swift; path = "ReelAtlas/Data/ContentRepository.swift"; sourceTree = SOURCE_ROOT; };
 		A715C0DE0000000000000002 /* StoryContentSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StoryContentSyncService.swift; path = "ReelAtlas/Data/StoryContentSyncService.swift"; sourceTree = SOURCE_ROOT; };
+		A715C0DE0000000000000004 /* CatalogDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CatalogDiscoveryService.swift; path = "ReelAtlas/Data/CatalogDiscoveryService.swift"; sourceTree = SOURCE_ROOT; };
 		DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SQLiteSupport.swift; path = "ReelAtlas/Data/SQLiteSupport.swift"; sourceTree = SOURCE_ROOT; };
 		1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = UserDatabase.swift; path = "ReelAtlas/Data/UserDatabase.swift"; sourceTree = SOURCE_ROOT; };
 		B4375501A72C9DE1B1CA7551 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = "ReelAtlas/Features/Home/HomeView.swift"; sourceTree = SOURCE_ROOT; };
+		A715C0DE0000000000000006 /* FilmListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FilmListView.swift; path = "ReelAtlas/Features/Home/FilmListView.swift"; sourceTree = SOURCE_ROOT; };
 		61DCCA4205B511DAEFF87741 /* LocalPosterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocalPosterView.swift; path = "ReelAtlas/Features/Home/LocalPosterView.swift"; sourceTree = SOURCE_ROOT; };
 		562F87B2992791CAB6868FAE /* MovieRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieRowView.swift; path = "ReelAtlas/Features/Home/MovieRowView.swift"; sourceTree = SOURCE_ROOT; };
 		79F170016F747653F1E1D820 /* YearPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = YearPickerView.swift; path = "ReelAtlas/Features/Home/YearPickerView.swift"; sourceTree = SOURCE_ROOT; };
@@ -125,9 +129,11 @@
 			6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */,
 			0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */,
 			A715C0DE0000000000000002 /* StoryContentSyncService.swift */,
+			A715C0DE0000000000000004 /* CatalogDiscoveryService.swift */,
 			DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */,
 			1E4DD26FEF99784CA310BCFF /* UserDatabase.swift */,
 			B4375501A72C9DE1B1CA7551 /* HomeView.swift */,
+			A715C0DE0000000000000006 /* FilmListView.swift */,
 			61DCCA4205B511DAEFF87741 /* LocalPosterView.swift */,
 			562F87B2992791CAB6868FAE /* MovieRowView.swift */,
 			79F170016F747653F1E1D820 /* YearPickerView.swift */,
@@ -194,9 +200,11 @@
 			546A149725638EAE0FD29399 /* AppModels.swift in Sources */,
 			C7374887F0423BFB9474AB50 /* ContentRepository.swift in Sources */,
 			A715C0DE0000000000000001 /* StoryContentSyncService.swift in Sources */,
+			A715C0DE0000000000000003 /* CatalogDiscoveryService.swift in Sources */,
 			7BDBE1CDFD06A2C50B4BE534 /* SQLiteSupport.swift in Sources */,
 			9345AD4F8BC1A8C967EF87BA /* UserDatabase.swift in Sources */,
 			73AC59DC38C4BCAE90CB6A51 /* HomeView.swift in Sources */,
+			A715C0DE0000000000000005 /* FilmListView.swift in Sources */,
 			43C410B1320B5E42110E8BD5 /* LocalPosterView.swift in Sources */,
 			61CA3745500A39737E07867D /* MovieRowView.swift in Sources */,
 			F08D810C7806746D3128B323 /* YearPickerView.swift in Sources */,

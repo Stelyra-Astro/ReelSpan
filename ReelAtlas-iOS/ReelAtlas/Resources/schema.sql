@@ -117,6 +117,18 @@ CREATE TABLE movie_periods (
   PRIMARY KEY (movie_qid, period_qid)
 );
 
+
+CREATE TABLE time_concepts (
+  concept_qid TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  name_en TEXT NOT NULL,
+  name_zh TEXT NOT NULL,
+  labels_json TEXT NOT NULL CHECK (json_valid(labels_json)),
+  start_year INTEGER,
+  end_year INTEGER
+);
+CREATE INDEX idx_time_concepts_category ON time_concepts(category,name_en);
+
 CREATE TABLE normalization_issues (
   id INTEGER PRIMARY KEY,
   source_target_qid TEXT REFERENCES targets(target_qid) ON DELETE CASCADE,

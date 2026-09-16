@@ -49,6 +49,24 @@ enum MovieLocationScope: Hashable, Sendable {
     case country(countryCode: String, countryQID: String)
 }
 
+
+/// Search and When/Where filters use stable Wikidata QIDs, not display names.
+struct TimeConcept: Identifiable, Hashable, Sendable {
+    var id: String { qid }
+    let qid: String
+    let category: String
+    let name: String
+    let startYear: Int?
+    let endYear: Int?
+}
+
+struct ModernWherePlace: Identifiable, Hashable, Sendable {
+    var id: String { qid }
+    let qid: String
+    let name: String
+    let category: String
+}
+
 struct SearchSelectionMarker: Identifiable, Equatable {
     let id = UUID()
     let name: String
@@ -89,6 +107,7 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
     let timeRanges: [StoryTimeRange]
     let locations: [StoryLocation]
     let cast: [MovieCastMember]
+    var matchReason: String? = nil
 
     func enriching(with details: MovieMetadata) -> MovieViewData {
         MovieViewData(
@@ -117,7 +136,8 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
                     name: $0.name, character: $0.character,
                     profileURL: $0.profileURL?.absoluteString, sortOrder: $0.order
                 )
-            }
+            },
+            matchReason: matchReason
         )
     }
 

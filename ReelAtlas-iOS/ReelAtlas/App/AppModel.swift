@@ -20,6 +20,17 @@ final class AppModel: ObservableObject {
     @Published var databaseVersion = "Unknown"
     @Published var isSearching = false
     @Published private(set) var isContentLoading = true
+    @Published private(set) var syncDownloaded = 0
+    @Published private(set) var syncTotal = 0
+    @Published private(set) var syncComplete = false
+    @Published var isListMode = true
+    @Published private(set) var whenConcepts: [TimeConcept] = []
+    @Published private(set) var selectedWhen: TimeConcept?
+    @Published private(set) var selectedWhere: ModernWherePlace?
+    @Published private(set) var globalSearch = ""
+    @Published private(set) var selectedGenre: String?
+    @Published private(set) var selectedSort = "recommended"
+    @Published private(set) var catalogSearchError: String?
     @Published private(set) var isLoadingMovies = false
     @Published private(set) var hasMoreMovies = false
     @Published private(set) var movieCacheBytes: Int64 = 0
@@ -31,6 +42,7 @@ final class AppModel: ObservableObject {
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
     private let contentSync = StoryContentSyncService()
+    private let catalog = CatalogDiscoveryService()
     private let searchData = SearchDataWorker()
     private let moviePages = MoviePageWorker()
     private var users: UserDatabase?
@@ -72,16 +84,95 @@ final class AppModel: ObservableObject {
             await searchData.configure(databaseURL: databaseURL)
             await moviePages.configure(databaseURL: databaseURL)
             databaseVersion = repository.databaseVersion()
+            if let initial = try? await contentSync.progress() {
+                syncDownloaded = initial.downloaded
+                syncTotal = initial.total
+                syncComplete = initial.isComplete
+            }
+            // The cached When catalog is ready with the first movie batch. A slow
+            // concepts request must not delay showing the initial list.
+            whenConcepts = repository.timeConcepts(preferredLanguage: effectiveLanguage)
 
             if contentBootstrapGate.markContentReady() {
                 await resolvePendingInitialLocation()
             } else {
                 applyCaliforniaFallback()
             }
-            if iCloudBackupEnabled { await restoreICloudBackup() }
+            if iCloudBackupEnabled && syncComplete { await restoreICloudBackup() }
+            Task { [weak self] in
+                guard let self else { return }
+                if let online = try? await self.catalog.concepts(language: self.effectiveLanguage) {
+                    self.whenConcepts = online
+                }
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                await self.contentSync.synchronizeRemaining { [weak self] progress in
+                    await self?.acceptSyncedBatch(progress)
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func acceptSyncedBatch(_ progress: StoryContentSyncService.SyncProgress) async {
+        syncDownloaded = progress.downloaded
+        syncTotal = progress.total
+        syncComplete = progress.isComplete
+        guard let url = try? ContentRepository.cacheURL(),
+              let refreshed = try? ContentRepository(databaseURL: url) else { return }
+        content = refreshed
+        databaseVersion = refreshed.databaseVersion()
+        await searchData.configure(databaseURL: url)
+        await moviePages.configure(databaseURL: url)
+        // Map rows use the local cache. The list uses the full server catalog and need not be reset.
+        if !isListMode { reload() }
+        if progress.isComplete && iCloudBackupEnabled {
+            await restoreICloudBackup()
+            scheduleICloudBackup()
+        }
+    }
+
+    func setListMode(_ enabled: Bool) {
+        guard isListMode != enabled else { return }
+        isListMode = enabled
+        reload()
+    }
+
+    func setGlobalSearch(_ value: String) {
+        guard globalSearch != value else { return }
+        globalSearch = String(value.prefix(80))
+        reload()
+    }
+
+    func setWhenConcept(_ concept: TimeConcept?) {
+        selectedWhen = concept
+        if let start = concept?.startYear, let end = concept?.endYear {
+            storyTimeSelection = StoryTimeSelection(startYear: start, endYear: end)
+        } else {
+            storyTimeSelection = StoryTimeSelection()
+        }
+        reload()
+    }
+
+    func setWherePlace(_ place: ModernWherePlace?) {
+        selectedWhere = place
+        reload()
+    }
+
+    func setGenre(_ value: String?) {
+        selectedGenre = value
+        reload()
+    }
+
+    func setSort(_ value: String) {
+        selectedSort = value
+        reload()
+    }
+
+    func findModernPlaces(_ query: String) async -> [ModernWherePlace] {
+        (try? await catalog.modernPlaces(query: query, language: effectiveLanguage)) ?? []
     }
 
     var effectiveLanguage: String {
@@ -128,16 +219,19 @@ final class AppModel: ObservableObject {
     }
 
     func setStoryStartYear(_ value: Int) {
+        selectedWhen = nil
         storyTimeSelection.updateStartYear(value)
         reload()
     }
 
     func setStoryEndYear(_ value: Int) {
+        selectedWhen = nil
         storyTimeSelection.updateEndYear(value)
         reload()
     }
 
     func setStoryTimeRange(startYear: Int, endYear: Int) {
+        selectedWhen = nil
         storyTimeSelection = StoryTimeSelection(startYear: startYear, endYear: endYear)
         reload()
     }
@@ -189,7 +283,7 @@ final class AppModel: ObservableObject {
     }
 
     func syncICloudNow() async {
-        guard iCloudBackupEnabled, let content else { return }
+        guard iCloudBackupEnabled, syncComplete, let content else { return }
         let manifest = ICloudBackupManifest(
             favoriteMovieQIDs: content.movieQIDs(ids: favoriteIDs),
             interfaceLanguage: interfaceLanguagePreference,
@@ -199,11 +293,12 @@ final class AppModel: ObservableObject {
     }
 
     private func restoreICloudBackup() async {
-        guard iCloudBackupEnabled, let content else { return }
+        guard iCloudBackupEnabled, syncComplete, let content else { return }
         guard let manifest = await iCloudBackup.restore() else { return }
         let restoredIDs = content.movieIDs(qids: manifest.favoriteMovieQIDs)
-        favoriteIDs = restoredIDs
-        users?.replaceFavorites(with: restoredIDs)
+        let merged = favoriteIDs.union(restoredIDs)
+        favoriteIDs = merged
+        users?.replaceFavorites(with: merged)
         if !manifest.interfaceLanguage.isEmpty {
             let restoredLanguage = InterfaceLanguageResolver.identifier(
                 preference: manifest.interfaceLanguage,
@@ -241,6 +336,13 @@ final class AppModel: ObservableObject {
 
     func searchMovies(_ items: [MovieSearchItem]) async -> [MovieViewData] {
         await searchData.movies(items, language: effectiveLanguage)
+    }
+
+    /// Full-catalog suggestions; do not filter by the incomplete local movie cache.
+    func unifiedSuggestions(_ query: String) async -> [MovieViewData] {
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else { return [] }
+        let request = CatalogDiscoveryService.Request(query: query, limit: 10)
+        return (try? await catalog.page(request, language: effectiveLanguage).movies) ?? []
     }
 
     func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D, reportErrors: Bool = true) async {
@@ -349,7 +451,7 @@ final class AppModel: ObservableObject {
 
     func reload() {
         clearMovies()
-        hasMoreMovies = movieLocationScope != nil
+        hasMoreMovies = isListMode || movieLocationScope != nil
         loadMoreMovies()
     }
 
@@ -363,7 +465,7 @@ final class AppModel: ObservableObject {
     }
 
     func loadMoreMovies() {
-        guard !isLoadingMovies, hasMoreMovies, let scope = movieLocationScope else { return }
+        guard !isLoadingMovies, hasMoreMovies else { return }
         isLoadingMovies = true
         let generation = moviePageGeneration
         let offset = movies.count
@@ -372,18 +474,57 @@ final class AppModel: ObservableObject {
         let language = effectiveLanguage
         let favoritesOnly = favoritesOnly
         let favoriteIDs = favoriteIDs
+        let mapScope = movieLocationScope
+        let listScope: MovieLocationScope? = selectedWhere.map { place in
+            place.category == "country"
+                ? .country(countryCode: "", countryQID: place.qid)
+                : .place(targetQID: place.qid)
+        }
+        let listMode = isListMode
+        let search = globalSearch
+        let concept = selectedWhen
+        let genre = selectedGenre
+        let sort = selectedSort
         moviePageTask = Task { [weak self] in
             guard let self else { return }
+            if listMode && !favoritesOnly {
+                let allYears = StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear)
+                let request = CatalogDiscoveryService.Request(
+                    query: search, startYear: allYears ? nil : startYear,
+                    endYear: allYears ? nil : endYear,
+                    conceptQID: concept?.qid,
+                    placeQID: listScope.flatMap { scope in
+                        if case .place(let qid) = scope { return qid }; return nil
+                    },
+                    countryQID: listScope.flatMap { scope in
+                        if case .country(_, let qid) = scope { return qid }; return nil
+                    },
+                    genre: genre, sort: sort, offset: offset,
+                    limit: MoviePaginationPolicy.resultPageSize)
+                do {
+                    let page = try await catalog.page(request, language: language)
+                    guard !Task.isCancelled, moviePageGeneration == generation else { return }
+                    movies.append(contentsOf: page.movies)
+                    hasMoreMovies = page.hasMore
+                    catalogSearchError = nil
+                    isLoadingMovies = false
+                    return
+                } catch {
+                    guard !Task.isCancelled, moviePageGeneration == generation else { return }
+                    catalogSearchError = "Full catalog search is temporarily unavailable."
+                    // Local fallback is safe only for an unfiltered browse; never misreport partial matches.
+                    if !search.isEmpty || concept != nil || genre != nil || listScope != nil {
+                        hasMoreMovies = false
+                        isLoadingMovies = false
+                        return
+                    }
+                }
+            }
             let page = await moviePages.page(
-                startYear: startYear,
-                endYear: endYear,
-                scope: scope,
-                language: language,
-                favoritesOnly: favoritesOnly,
-                favoriteIDs: favoriteIDs,
-                offset: offset,
-                metadataService: metadataStore.service
-            )
+                startYear: startYear, endYear: endYear,
+                scope: listMode ? listScope : mapScope, language: language,
+                favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs,
+                offset: offset, metadataService: metadataStore.service)
             guard !Task.isCancelled, moviePageGeneration == generation else { return }
             movies.append(contentsOf: page.movies)
             storyLocationPins = page.storyLocations
@@ -413,89 +554,45 @@ final class AppModel: ObservableObject {
 }
 
 private actor MoviePageWorker {
-    private struct QueryKey: Hashable {
-        let startYear: Int
-        let endYear: Int
-        let scope: MovieLocationScope
-        let language: String
-        let favoritesOnly: Bool
-        let favoriteIDs: [Int]
-    }
-
     private var content: ContentRepository?
-    private var currentKey: QueryKey?
-    private var rankedMovies: [MovieViewData] = []
 
     func configure(databaseURL: URL) {
         content = try? ContentRepository(databaseURL: databaseURL)
-        currentKey = nil
-        rankedMovies = []
     }
 
+    /// Only request metadata for the visible page; a 50k-film catalog must never
+    /// trigger tens of thousands of ranking requests during a single map reload.
     func page(
-        startYear: Int,
-        endYear: Int,
-        scope: MovieLocationScope,
-        language: String,
-        favoritesOnly: Bool,
-        favoriteIDs: Set<Int>,
-        offset: Int,
-        metadataService: MovieMetadataService
+        startYear: Int, endYear: Int, scope: MovieLocationScope?,
+        language: String, favoritesOnly: Bool, favoriteIDs: Set<Int>,
+        offset: Int, metadataService: MovieMetadataService
     ) async -> MoviePage {
         guard !Task.isCancelled, let content else { return .empty }
-        let key = QueryKey(
-            startYear: startYear, endYear: endYear, scope: scope, language: language,
-            favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs.sorted()
-        )
-
-        if currentKey != key || offset == 0 {
-            let candidates = content.candidateMovies(
-                startYear: startYear, endYear: endYear, scope: scope,
-                preferredLanguage: language, favoritesOnly: favoritesOnly, favoriteIDs: favoriteIDs
-            )
-            let tmdbIDs = candidates.compactMap(\.tmdbID)
-            var rankings: [MovieRanking] = []
-            for batch in MovieRankingBatchPolicy.batches(tmdbIDs) {
-                guard !Task.isCancelled else { return .empty }
-                if let values = try? await metadataService.rankings(tmdbIDs: batch) {
-                    rankings.append(contentsOf: values)
-                }
+        let size = MoviePaginationPolicy.resultPageSize
+        let candidates = content.candidateMovies(
+            startYear: startYear, endYear: endYear, scope: scope,
+            preferredLanguage: language, favoritesOnly: favoritesOnly,
+            favoriteIDs: favoriteIDs, maximum: offset + size + 1)
+        guard offset < candidates.count else { return .empty }
+        let selected = Array(candidates.dropFirst(offset).prefix(size))
+        let hasMore = candidates.count > offset + size
+        let tmdbIDs = selected.compactMap(\.tmdbID)
+        var byTMDB: [Int: MovieRanking] = [:]
+        for batch in MovieRankingBatchPolicy.batches(tmdbIDs) {
+            guard !Task.isCancelled else { return .empty }
+            if let rankings = try? await metadataService.rankings(tmdbIDs: batch) {
+                for ranking in rankings { byTMDB[ranking.tmdbID] = ranking }
             }
-            let rankingByTMDB = Dictionary(uniqueKeysWithValues: rankings.map { ($0.tmdbID, $0) })
-            let byLocalID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
-            let ordered = MovieRankingPolicy.sortedCandidates(
-                candidates.map {
-                    MovieRankingCandidate(
-                        localID: $0.id,
-                        tmdbID: $0.tmdbID,
-                        hasStoryTime: !$0.timeRanges.isEmpty
-                    )
-                },
-                rankings: rankings
-            )
-            rankedMovies = ordered.compactMap { candidate in
-                guard let movie = byLocalID[candidate.localID] else { return nil }
-                guard let tmdbID = movie.tmdbID, let ranking = rankingByTMDB[tmdbID] else { return movie }
-                return movie.applying(ranking: ranking)
-            }
-            currentKey = key
         }
-
-        guard offset < rankedMovies.count else { return .empty }
-        let end = min(rankedMovies.count, offset + MoviePaginationPolicy.resultPageSize)
-        return MoviePage(
-            movies: Array(rankedMovies[offset..<end]),
-            hasMore: end < rankedMovies.count,
-            storyLocations: Self.uniqueStoryLocations(in: rankedMovies)
-        )
-    }
-
-    private static func uniqueStoryLocations(in movies: [MovieViewData]) -> [StoryLocation] {
+        let movies = selected.map { movie in
+            guard let tmdbID = movie.tmdbID, let ranking = byTMDB[tmdbID] else { return movie }
+            return movie.applying(ranking: ranking)
+        }
         var seen = Set<String>()
-        return movies.flatMap(\.locations).filter { location in
-            guard location.coordinate != nil else { return false }
-            return seen.insert(location.rawPlaceQID).inserted
+        let locations = movies.flatMap(\.locations).filter { location in
+            location.coordinate != nil && seen.insert(location.rawPlaceQID).inserted
         }
+        return MoviePage(movies: movies, hasMore: hasMore, storyLocations: locations)
     }
 }
 
