@@ -112,6 +112,7 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
     let locations: [StoryLocation]
     let cast: [MovieCastMember]
     var matchReason: String? = nil
+    var catalogOriginalTitle: String? = nil
 
     func enriching(with details: MovieMetadata) -> MovieViewData {
         MovieViewData(
@@ -141,7 +142,7 @@ struct MovieViewData: Identifiable, Hashable, Sendable {
                     profileURL: $0.profileURL?.absoluteString, sortOrder: $0.order
                 )
             },
-            matchReason: matchReason
+            matchReason: matchReason, catalogOriginalTitle: catalogOriginalTitle
         )
     }
 

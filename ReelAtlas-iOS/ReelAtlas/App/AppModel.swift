@@ -23,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var syncDownloaded = 0
     @Published private(set) var syncTotal = 0
     @Published private(set) var syncComplete = false
+    @Published private(set) var contentSyncError: String?
+    @Published private(set) var isUpdatingContent = false
     @Published var isListMode = true
     @Published private(set) var whenConcepts: [TimeConcept] = []
     @Published private(set) var whereCatalog: [ModernWherePlace] = []
@@ -114,15 +116,21 @@ final class AppModel: ObservableObject {
                     self.whenConcepts = online
                 }
             }
-            Task { [weak self] in
-                guard let self else { return }
-                await self.contentSync.synchronizeRemaining { [weak self] progress in
-                    await self?.acceptSyncedBatch(progress)
-                }
-            }
+            Task { [weak self] in await self?.resumeContentSync() }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func resumeContentSync() async {
+        guard content != nil, !isUpdatingContent else { return }
+        isUpdatingContent = true
+        contentSyncError = nil
+        defer { isUpdatingContent = false }
+        await contentSync.synchronizeRemaining { [weak self] progress in
+            await self?.acceptSyncedBatch(progress)
+        }
+        contentSyncError = await contentSync.lastSyncError
     }
 
     private func acceptSyncedBatch(_ progress: StoryContentSyncService.SyncProgress) async {

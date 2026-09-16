@@ -23,27 +23,86 @@ actor StoryContentSyncService {
     private let pageSize = 1_000
     private let batchSize = 250
     private let formatVersion = "full-catalog-v2"
+    private let databaseURL: URL?
+    private let schemaSQL: String?
+    private let transport: (@Sendable (URLRequest) async throws -> Data)?
+    private var isSynchronizing = false
+    private(set) var lastSyncError: String?
 
-    func ensureCurrentContent() async throws -> URL {
-        let destination = try ContentRepository.cacheURL()
-        do {
-            let manifest = try await fetchManifest()
-            let expected = manifest.sourceVersion + ":" + formatVersion
-            if FileManager.default.fileExists(atPath: destination.path),
-               Self.value(at: destination, key: "sync_target_version") == expected {
-                return destination  // Complete or interrupted: synchronizeRemaining() handles the cursor.
-            }
-            try await rebuildFirstBatch(destination: destination, manifest: manifest)
-            return destination
-        } catch {
-            // Do not destroy a usable published snapshot on a transient network error.
-            if FileManager.default.fileExists(atPath: destination.path) { return destination }
-            throw error
+    init(databaseURL: URL? = nil, schemaSQL: String? = nil,
+         transport: (@Sendable (URLRequest) async throws -> Data)? = nil) {
+        self.databaseURL = databaseURL; self.schemaSQL = schemaSQL; self.transport = transport
+    }
+
+    private func cacheURL() throws -> URL { try databaseURL ?? ContentRepository.cacheURL() }
+
+    private func cacheSchema() throws -> String {
+        if let schemaSQL { return schemaSQL }
+        guard let url = Bundle.main.url(forResource: "schema", withExtension: "sql") else {
+            throw SQLiteError.open("Content cache schema is missing")
+        }
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func isCompatible(_ url: URL) -> Bool {
+        guard Self.value(at: url, key: "source_format") == "supabase-story-content-full-v2",
+              let db = try? SQLiteDatabase(url: url, readOnly: true) else { return false }
+        return CatalogSyncSchema.tables.allSatisfy { table in
+            guard let stmt = try? db.prepare("SELECT \(table.fields.map(\.local).joined(separator: ",")) FROM \(table.local) LIMIT 0") else { return false }
+            sqlite3_finalize(stmt); return true
         }
     }
 
+    func ensureCurrentContent() async throws -> URL {
+        let destination = try cacheURL()
+        // A usable on-device cache never waits for the network or gets replaced at launch.
+        if FileManager.default.fileExists(atPath: destination.path) {
+            do { try migrateExistingCache(at: destination) }
+            catch { lastSyncError = error.localizedDescription }
+            return destination
+        }
+        let manifest = try await fetchManifest()
+        try await rebuildFirstBatch(destination: destination, manifest: manifest)
+        return destination
+    }
+
+    private func migrateExistingCache(at url: URL) throws {
+        let db = try SQLiteDatabase(url: url, readOnly: false)
+        // Check the known existing story schema before making any change to an older file.
+        for table in CatalogSyncSchema.tables where table.local != "time_concepts" {
+            let stmt = try db.prepare("SELECT \(table.fields.map(\.local).joined(separator: ",")) FROM \(table.local) LIMIT 0")
+            sqlite3_finalize(stmt)
+        }
+        let metadata = try db.prepare("SELECT key,value FROM metadata LIMIT 0")
+        sqlite3_finalize(metadata)
+        let priorFormat = Self.value(at: url, key: "source_format")
+        try db.execute("BEGIN IMMEDIATE")
+        do {
+            try db.execute("""
+                CREATE TABLE IF NOT EXISTS time_concepts (
+                  concept_qid TEXT PRIMARY KEY, category TEXT NOT NULL, name_en TEXT NOT NULL,
+                  name_zh TEXT NOT NULL, labels_json TEXT NOT NULL CHECK(json_valid(labels_json)),
+                  start_year INTEGER, end_year INTEGER);
+                CREATE INDEX IF NOT EXISTS idx_time_concepts_category ON time_concepts(category,name_en);
+                """)
+            // Legacy matched-film caches can join the full catalog by adding only missing rows.
+            if priorFormat != "supabase-story-content-full-v2" {
+                try insert(db,"INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)",[.text("source_format"),.text("supabase-story-content-full-v2")])
+                try insert(db,"INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)",[.text("sync_complete"),.text("0")])
+            }
+            for key in ["sync_downloaded","sync_total"] {
+                try insert(db,"INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)",[.text(key),.text(String(try movieCount(db)))])
+            }
+            for table in CatalogSyncSchema.tables {
+                let stmt = try db.prepare("SELECT \(table.fields.map(\.local).joined(separator: ",")) FROM \(table.local) LIMIT 0")
+                sqlite3_finalize(stmt)
+            }
+            try db.execute("COMMIT")
+        } catch { try? db.execute("ROLLBACK"); throw error }
+    }
+
     func progress() throws -> SyncProgress {
-        let url = try ContentRepository.cacheURL()
+        let url = try cacheURL()
         let total = Int(Self.value(at: url, key: "sync_total") ?? "") ?? 0
         let downloaded = Int(Self.value(at: url, key: "sync_downloaded") ?? "") ?? 0
         return SyncProgress(downloaded: downloaded, total: total,
@@ -52,29 +111,164 @@ actor StoryContentSyncService {
 
     /// Called after the initial view appears; iOS may suspend it in the background, so checkpoint each page.
     func synchronizeRemaining(onBatch: @escaping @Sendable (SyncProgress) async -> Void) async {
-        guard let manifest = try? await fetchManifest(),
-              let url = try? ContentRepository.cacheURL(),
-              Self.value(at: url, key: "sync_target_version") == manifest.sourceVersion + ":" + formatVersion,
-              Self.value(at: url, key: "sync_complete") != "1" else { return }
-        var cursor = Int(Self.value(at: url, key: "sync_cursor") ?? "") ?? 0
-        let total = manifest.rowCounts["story_movies"] ?? 0
-        while !Task.isCancelled {
-            do {
-                let batch = try await fetchMovieBatch(after: cursor)
-                let last = batch.last.flatMap { ($0["legacy_id"] as? NSNumber)?.intValue } ?? cursor
-                let completed = batch.count < batchSize
-                try await importBatch(at: url, movies: batch, cursor: last,
-                                      total: total, target: manifest.sourceVersion + ":" + formatVersion,
-                                      version: manifest.sourceVersion, complete: completed)
-                cursor = last
-                let state = try progress()
-                await onBatch(state)
-                if completed { return }
-            } catch {
-                // Retain the last committed cursor and continue next foreground launch.
-                return
+        guard !isSynchronizing else { return }
+        isSynchronizing = true
+        lastSyncError = nil
+        defer { isSynchronizing = false }
+        do {
+            let manifest = try await fetchManifest()
+            let url = try cacheURL()
+            guard isCompatible(url) else { throw SQLiteError.open("Compatible story cache is unavailable") }
+            // Diff all committed rows, including interrupted initial downloads. Parent-table
+            // changes must be applied before new movies/relationships, even without a version bump.
+            try Task.checkCancellation()
+            // Always reconcile: content edits and removals can occur without a version bump.
+            try await reconcile(at: url, manifest: manifest, onBatch: onBatch)
+        } catch {
+            // Completed metadata stays at the previous version until the entire diff is verified.
+            lastSyncError = error.localizedDescription
+        }
+    }
+
+    private struct IndexEntry: Decodable {
+        let row_key: String
+        let fingerprint: String
+    }
+
+    private func remoteIndex(_ table: CatalogSyncSchema.Table) async throws -> [String: String] {
+        var index: [String: String] = [:]
+        var after = ""
+        let indexPageSize = table.local == "movies" ? 5000 : 1000
+        while true {
+            try Task.checkCancellation()
+            var req = URLRequest(url: baseURL.appendingPathComponent("rpc/reelspan_catalog_index"))
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: ["p_table": table.remote, "p_after": after, "p_limit": indexPageSize])
+            let page = try JSONDecoder().decode([IndexEntry].self, from: try await perform(req))
+            for entry in page {
+                guard entry.row_key.utf8.lexicographicallyPrecedes(after.utf8) == false,
+                      entry.row_key != after, index[entry.row_key] == nil else {
+                    throw SQLiteError.step("Invalid catalog index order")
+                }
+                index[entry.row_key] = entry.fingerprint
+            }
+            if page.count < indexPageSize { return index }
+            guard let last = page.last else { return index }
+            after = last.row_key
+        }
+    }
+
+    private func reconcile(at url: URL, manifest: Manifest,
+                           onBatch: @escaping @Sendable (SyncProgress) async -> Void) async throws {
+        // Obtain all indexes before writes so failures cannot be mistaken for an empty catalog.
+        var indexes: [String: [String: String]] = [:]
+        for table in CatalogSyncSchema.tables { indexes[table.local] = try await remoteIndex(table) }
+        guard !(indexes["movies"] ?? [:]).isEmpty else { throw SQLiteError.step("Published catalog is empty") }
+        let db = try SQLiteDatabase(url: url, readOnly: false)
+        try db.execute("PRAGMA foreign_keys=ON")
+        for table in CatalogSyncSchema.tables {
+            let remote = indexes[table.local]!
+            let local = try table.localIndex(db)
+            let changed = remote.keys.filter { remote[$0] != local[$0] }.sorted()
+            // Bound request URLs and response memory. Composite keys are matched exactly after fetching.
+            let bodyBatchSize = table.keys.count == 1 ? 100 : 30
+            for offset in stride(from: 0, to: changed.count, by: bodyBatchSize) {
+                try Task.checkCancellation()
+                let keys = Array(changed.dropFirst(offset).prefix(bodyBatchSize))
+                let keyFields = table.keys.map { key in table.fields.first { $0.local == key }!.remote }
+                let filters: [URLQueryItem]
+                if keyFields.count == 1 {
+                    filters = [URLQueryItem(name: keyFields[0], value: "in.(\(keys.joined(separator: ",")))")]
+                } else {
+                    let terms = keys.map { key in
+                        let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                        return "and(" + zip(keyFields,parts).map { "\($0.0).eq.\($0.1)" }.joined(separator: ",") + ")"
+                    }
+                    filters = [URLQueryItem(name: "or", value: "(" + terms.joined(separator: ",") + ")")]
+                }
+                let bodies = try await rows(table: table.remote, filters: filters)
+                let requested = Set(keys)
+                var matched: [String: [String: Any]] = [:]
+                for row in bodies {
+                    let key = table.rowKey(row)
+                    if requested.contains(key) {
+                        guard try table.fingerprint(row) == remote[key] else {
+                            throw SQLiteError.step("Catalog changed while downloading; retry later")
+                        }
+                        matched[key] = row
+                    }
+                }
+                guard matched.count == requested.count else { throw SQLiteError.step("Incomplete catalog response; keeping existing rows") }
+                try db.execute("BEGIN IMMEDIATE")
+                do {
+                    for key in keys { try upsert(table, row: matched[key]!, db: db) }
+                    try db.execute("COMMIT")
+                } catch { try? db.execute("ROLLBACK"); throw error }
+                if table.local == "movies", Self.value(at: url, key: "sync_complete") != "1" {
+                    await onBatch(SyncProgress(downloaded: try movieCount(db), total: indexes["movies"]!.count, isComplete: false))
+                }
             }
         }
+        // Verify a second metadata pass before pruning and publishing the completed local version.
+        for table in CatalogSyncSchema.tables {
+            guard try await remoteIndex(table) == indexes[table.local] else {
+                throw SQLiteError.step("Catalog changed during synchronization; existing data retained")
+            }
+        }
+        let latest = try await fetchManifest()
+        guard latest.sourceVersion == manifest.sourceVersion else { throw SQLiteError.step("A newer catalog was published; retry later") }
+        try db.execute("BEGIN IMMEDIATE")
+        do {
+            for table in CatalogSyncSchema.tables.reversed() {
+                let local = try table.localIndex(db)
+                for key in local.keys where indexes[table.local]![key] == nil {
+                    let parts = key.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    let whereSQL = table.keys.map { "\($0)=?" }.joined(separator: " AND ")
+                    try insert(db, "DELETE FROM \(table.local) WHERE \(whereSQL)", parts.map(SQLiteBindValue.text))
+                }
+            }
+            // Parent cascades must not silently remove a still-published relationship.
+            for table in CatalogSyncSchema.tables {
+                guard try table.localIndex(db) == indexes[table.local] else {
+                    throw SQLiteError.step("Catalog relationships failed verification")
+                }
+            }
+            let count = try movieCount(db)
+            for (key,value) in ["sync_target_version": manifest.sourceVersion + ":" + formatVersion,
+                                "sync_complete": "1", "sync_total": String(count), "sync_downloaded": String(count),
+                                "database_version": manifest.sourceVersion] {
+                try insert(db,"INSERT OR REPLACE INTO metadata(key,value) VALUES (?,?)",[.text(key),.text(value)])
+            }
+            try db.execute("COMMIT")
+        } catch { try? db.execute("ROLLBACK"); throw error }
+        await onBatch(try progress())
+    }
+
+    private func upsert(_ table: CatalogSyncSchema.Table, row: [String: Any], db: SQLiteDatabase) throws {
+        let columns = table.fields.map(\.local)
+        var bindings: [SQLiteBindValue] = try table.fields.map { field in
+            let value = row[field.remote]
+            switch field.kind {
+            case .text: return optionalText(value)
+            case .int: return optionalInt(value)
+            case .double: return value == nil || value is NSNull ? .null : .double(requiredDouble(row, field.remote))
+            case .bool: return optionalBool(value)
+            case .json: return .text(try jsonString(value))
+            }
+        }
+        var insertColumns = columns
+        // Movie enrichment is a separate cache concern. On an existing movie only story IDs change.
+        if table.local == "movies" {
+            let defaults: [String: String] = ["title_en": requiredString(row,"movie_qid"), "title_zh": requiredString(row,"movie_qid"),
+                "labels_json": "{}", "director_qids_json": "[]", "directors_json": "[]", "origin_country_qids_json": "[]",
+                "origin_countries_json": "[]", "genre_qids_json": "[]", "genres_json": "[]", "original_language_qids_json": "[]",
+                "original_languages_json": "[]", "period_qids_json": "[]"]
+            for key in defaults.keys.sorted() { insertColumns.append(key); bindings.append(.text(defaults[key]!)) }
+        }
+        let updates = columns.filter { !table.keys.contains($0) }.map { "\($0)=excluded.\($0)" }.joined(separator: ",")
+        let sql = "INSERT INTO \(table.local)(\(insertColumns.joined(separator: ","))) VALUES (\(insertColumns.map { _ in "?" }.joined(separator: ","))) ON CONFLICT(\(table.keys.joined(separator: ","))) DO UPDATE SET \(updates)"
+        try insert(db,sql,bindings)
     }
 
     private func fetchManifest() async throws -> Manifest {
@@ -105,16 +299,14 @@ actor StoryContentSyncService {
     }
 
     private func rebuildFirstBatch(destination: URL, manifest: Manifest) async throws {
-        guard let schemaURL = Bundle.main.url(forResource: "schema", withExtension: "sql") else {
-            throw SQLiteError.open("Content cache schema is missing")
-        }
+        let schema = try cacheSchema()
         let replacement = destination.deletingLastPathComponent().appendingPathComponent("content-replacement.sqlite")
         try? FileManager.default.removeItem(at: replacement)
         do {
             // Keep replacement private until the complete first batch is committed.
             do {
                 let db = try SQLiteDatabase(url: replacement, readOnly: false)
-                try db.execute(String(contentsOf: schemaURL, encoding: .utf8))
+                try db.execute(schema)
                 try db.execute("BEGIN IMMEDIATE")
                 do {
                     try await importTargets(db)
@@ -133,11 +325,11 @@ actor StoryContentSyncService {
                                   total: manifest.rowCounts["story_movies"] ?? 0,
                                   target: manifest.sourceVersion + ":" + formatVersion,
                                   version: manifest.sourceVersion, complete: first.count < batchSize)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                _ = try FileManager.default.replaceItemAt(destination, withItemAt: replacement)
-            } else {
-                try FileManager.default.moveItem(at: replacement, to: destination)
+            // Initialization is for a missing cache only; never replace an existing database.
+            guard !FileManager.default.fileExists(atPath: destination.path) else {
+                throw SQLiteError.open("Existing content cache retained")
             }
+            try FileManager.default.moveItem(at: replacement, to: destination)
         } catch {
             try? FileManager.default.removeItem(at: replacement)
             throw error
@@ -155,9 +347,10 @@ actor StoryContentSyncService {
         let matches = qids.isEmpty ? [] : try await rows(table: "story_movie_target_matches",
                       filters: [URLQueryItem(name: "movie_qid", value: filter)])
         let db = try SQLiteDatabase(url: url, readOnly: false)
+        try db.execute("PRAGMA foreign_keys=ON")
         try db.execute("BEGIN IMMEDIATE")
         do {
-            try importMovies(db, rows: movies)
+            for row in movies { try upsert(CatalogSyncSchema.tables.first { $0.local == "movies" }!, row: row, db: db) }
             try importLocations(db, rows: locations)
             try importPeriods(db, rows: periods)
             try importTargetMatches(db, rows: matches)
@@ -192,149 +385,36 @@ actor StoryContentSyncService {
 
     private func importTimeConcepts(_ database: SQLiteDatabase) async throws {
         try await forEachRow(table: "story_time_concepts") { row in
-            try self.insert(database, """
-                INSERT INTO time_concepts(concept_qid,category,name_en,name_zh,labels_json,start_year,end_year)
-                VALUES(?,?,?,?,?,?,?)
-                """, [
-                    .text(self.requiredString(row,"concept_qid")),
-                    .text(self.requiredString(row,"category")),
-                    .text(self.requiredString(row,"name_en")),
-                    .text(self.requiredString(row,"name_zh")),
-                    .text(try self.jsonString(row["labels"])),
-                    self.optionalInt(row["start_year"]),self.optionalInt(row["end_year"])
-                ])
+            try self.upsert(CatalogSyncSchema.tables.first { $0.local == "time_concepts" }!, row: row, db: database)
         }
     }
 
     private func importTargets(_ database: SQLiteDatabase) async throws {
         try await forEachRow(table: "story_targets") { row in
-            try self.insert(database, """
-            INSERT INTO targets(
-              target_qid,target_kind,name_en,name_zh,labels_json,admin1_qid,
-              admin1_name_en,country_qid,country_name_en,film_count,candidate_count
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-            """, [
-                .text(self.requiredString(row, "target_qid")),
-                .text(self.requiredString(row, "target_kind")),
-                .text(self.requiredString(row, "name_en")),
-                .text(self.requiredString(row, "name_zh")),
-                .text(try self.jsonString(row["labels"])),
-                self.optionalText(row["admin1_qid"]),
-                self.optionalText(row["admin1_name_en"]),
-                .text(self.requiredString(row, "country_qid")),
-                .text(self.requiredString(row, "country_name_en")),
-                .int(self.requiredInt(row, "film_count")),
-                .int(self.requiredInt(row, "candidate_count"))
-            ])
+            try self.upsert(CatalogSyncSchema.tables.first { $0.local == "targets" }!, row: row, db: database)
         }
     }
 
     private func importMovies(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
-        for row in rows {
-            let qid = self.requiredString(row, "movie_qid")
-            try self.insert(database, """
-            INSERT INTO movies(
-              movie_qid,id,title_en,title_zh,labels_json,director_qids_json,
-              directors_json,origin_country_qids_json,origin_countries_json,
-              genre_qids_json,genres_json,original_language_qids_json,
-              original_languages_json,imdb_id,tmdb_movie_id,period_qids_json
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, [
-                .text(qid), .int(self.requiredInt(row, "legacy_id")),
-                .text(qid), .text(qid), .text("{}"), .text("[]"), .text("[]"),
-                .text("[]"), .text("[]"), .text("[]"), .text("[]"),
-                .text("[]"), .text("[]"), self.optionalText(row["imdb_id"]),
-                self.optionalInt(row["tmdb_id"]), .text("[]")
-            ])
-        }
+        for row in rows { try upsert(CatalogSyncSchema.tables.first { $0.local == "movies" }!, row: row, db: database) }
     }
 
     private func importPlaces(_ database: SQLiteDatabase) async throws {
         try await forEachRow(table: "story_places") { row in
-            try self.insert(database, """
-            INSERT INTO places(
-              place_qid,name_en,name_zh,labels_json,type_qids_json,p131_qids_json,
-              location_qids_json,country_qids_json,present_day_qids_json,
-              replaced_by_qids_json,followed_by_qids_json,coordinate,dissolved_date
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, [
-                .text(self.requiredString(row, "place_qid")),
-                .text(self.requiredString(row, "name_en")),
-                .text(self.requiredString(row, "name_zh")),
-                .text(try self.jsonString(row["labels"])),
-                .text(try self.jsonString(row["type_qids"])),
-                .text(try self.jsonString(row["p131_qids"])),
-                .text(try self.jsonString(row["location_qids"])),
-                .text(try self.jsonString(row["country_qids"])),
-                .text(try self.jsonString(row["present_day_qids"])),
-                .text(try self.jsonString(row["replaced_by_qids"])),
-                .text(try self.jsonString(row["followed_by_qids"])),
-                self.optionalText(row["coordinate"]),
-                self.optionalText(row["dissolved_date"])
-            ])
+            try self.upsert(CatalogSyncSchema.tables.first { $0.local == "places" }!, row: row, db: database)
         }
     }
 
     private func importTargetMatches(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
-        for row in rows {
-            try self.insert(database, """
-            INSERT INTO movie_target_matches(
-              movie_qid,target_qid,target_kind,matched_raw_location_count,
-              matched_raw_place_qids_json,best_confidence
-            ) VALUES(?,?,?,?,?,?)
-            """, [
-                .text(self.requiredString(row, "movie_qid")),
-                .text(self.requiredString(row, "target_qid")),
-                .text(self.requiredString(row, "target_kind")),
-                .int(self.requiredInt(row, "matched_raw_location_count")),
-                .text(try self.jsonString(row["matched_raw_place_qids"])),
-                .double(self.requiredDouble(row, "best_confidence"))
-            ])
-        }
+        for row in rows { try upsert(CatalogSyncSchema.tables.first { $0.local == "movie_target_matches" }!, row: row, db: database) }
     }
 
     private func importLocations(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
-        for row in rows {
-            try self.insert(database, """
-            INSERT INTO movie_locations VALUES(
-              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-            )
-            """, [
-                .int(self.requiredInt(row, "id")), self.optionalText(row["source_target_qid"]),
-                .text(self.requiredString(row, "movie_qid")), self.optionalBool(row["is_target_match"]),
-                .text(self.requiredString(row, "raw_place_qid")),
-                .text(self.requiredString(row, "raw_place_name_en")),
-                .text(self.requiredString(row, "raw_place_name_zh")),
-                .text(try self.jsonString(row["raw_place_labels"])),
-                self.optionalText(row["historical_capital_qid"]), self.optionalText(row["historical_capital_name_en"]),
-                self.optionalText(row["modern_place_qid"]), self.optionalText(row["modern_place_name_en"]),
-                self.optionalText(row["city_qid"]), self.optionalText(row["city_name_en"]), self.optionalText(row["city_name_zh"]),
-                self.optionalText(row["admin1_qid"]), self.optionalText(row["admin1_name_en"]), self.optionalText(row["admin1_name_zh"]),
-                self.optionalText(row["country_qid"]), self.optionalText(row["country_name_en"]), self.optionalText(row["country_name_zh"]),
-                .text(self.requiredString(row, "normalization_method")), self.optionalText(row["normalization_path"]),
-                .double(self.requiredDouble(row, "confidence")), .text(self.requiredString(row, "status")),
-                self.optionalText(row["notes"])
-            ])
-        }
+        for row in rows { try upsert(CatalogSyncSchema.tables.first { $0.local == "movie_locations" }!, row: row, db: database) }
     }
 
     private func importPeriods(_ database: SQLiteDatabase, rows: [[String: Any]]) throws {
-        for row in rows {
-            try self.insert(database, """
-            INSERT INTO movie_periods(
-              movie_qid,period_qid,period_name_en,period_name_zh,period_labels_json,
-              start_year,end_year,interval_method
-            ) VALUES(?,?,?,?,?,?,?,?)
-            """, [
-                .text(self.requiredString(row, "movie_qid")),
-                .text(self.requiredString(row, "period_qid")),
-                .text(self.requiredString(row, "period_name_en")),
-                .text(self.requiredString(row, "period_name_zh")),
-                .text(try self.jsonString(row["period_labels"])),
-                self.optionalInt(row["start_year"]), self.optionalInt(row["end_year"]),
-                .text(self.requiredString(row, "interval_method"))
-            ])
-        }
+        for row in rows { try upsert(CatalogSyncSchema.tables.first { $0.local == "movie_periods" }!, row: row, db: database) }
     }
 
     private func forEachRow(
@@ -383,9 +463,13 @@ actor StoryContentSyncService {
         return values
     }
 
-    private func request(_ url: URL) async throws -> Data {
-        var request = URLRequest(url: url)
+    private func request(_ url: URL) async throws -> Data { try await perform(URLRequest(url: url)) }
+
+    private func perform(_ original: URLRequest) async throws -> Data {
+        var request = original
         request.setValue(publishableKey, forHTTPHeaderField: "apikey")
+        request.timeoutInterval = 30
+        if let transport { return try await transport(request) }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw SQLiteError.step("Supabase content request failed")

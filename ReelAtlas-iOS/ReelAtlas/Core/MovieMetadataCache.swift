@@ -22,16 +22,16 @@ public final class MovieMetadataCache {
         self.fileManager = fileManager
     }
 
-    public func readMetadata(tmdbID: Int) throws -> MovieMetadata? {
+    public func readMetadata(tmdbID: Int, allowExpired: Bool = false) throws -> MovieMetadata? {
         try withLock {
             let url = metadataURL(tmdbID: tmdbID)
-            guard let data = try readData(at: url) else { return nil }
+            guard let data = try readData(at: url, allowExpired: allowExpired) else { return nil }
             do {
                 let metadata = try JSONDecoder().decode(MovieMetadata.self, from: data)
                 try refreshAccessDate(for: url)
                 return metadata
             } catch {
-                try? fileManager.removeItem(at: url)
+                // Preserve older-format bytes until a successful refresh/migration replaces them.
                 return nil
             }
         }
@@ -43,10 +43,10 @@ public final class MovieMetadataCache {
         }
     }
 
-    public func cachedImage(for url: URL) -> Data? {
+    public func cachedImage(for url: URL, allowExpired: Bool = false) -> Data? {
         withLock {
             do {
-                guard let data = try readData(at: imageURL(for: url)) else { return nil }
+                guard let data = try readData(at: imageURL(for: url), allowExpired: allowExpired) else { return nil }
                 try refreshAccessDate(for: imageURL(for: url))
                 return data
             } catch {
@@ -120,12 +120,10 @@ public final class MovieMetadataCache {
         try trimCacheEntries()
     }
 
-    private func readData(at url: URL) throws -> Data? {
+    private func readData(at url: URL, allowExpired: Bool = false) throws -> Data? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
-        guard !isExpired(url) else {
-            try? fileManager.removeItem(at: url)
-            return nil
-        }
+        // Expiration requests a refresh; it does not delete the last offline copy.
+        guard allowExpired || !isExpired(url) else { return nil }
         return try Data(contentsOf: url)
     }
 
@@ -149,10 +147,6 @@ public final class MovieMetadataCache {
         while let url = enumerator?.nextObject() as? URL {
             let values = try url.resourceValues(forKeys: keys)
             guard values.isRegularFile == true, let size = values.fileSize else { continue }
-            guard !isExpired(url, modificationDate: values.contentModificationDate) else {
-                try? fileManager.removeItem(at: url)
-                continue
-            }
 
             let bytes = Int64(size)
             let modificationDate = values.contentModificationDate ?? .distantPast

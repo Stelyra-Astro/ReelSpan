@@ -29,21 +29,6 @@ struct MovieRowView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(movie.title).font(.headline).lineLimit(2)
                     Spacer(minLength: 4)
-                    Button(action: onFavorite) {
-                        Image(systemName: isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(isFavorite ? .red : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(isFavorite ? "movie.favorite.added" : "movie.favorite.add"))
-                }
-
-                if let onContribute {
-                    Button(action: onContribute) {
-                        Label("Correct / contribute", systemImage: "square.and.pencil")
-                            .font(.caption2)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Suggest story time or place corrections for \(movie.title)")
                 }
 
                 HStack(spacing: 8) {
@@ -74,6 +59,24 @@ struct MovieRowView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            }
+            VStack(spacing: 14) {
+                Button(action: onFavorite) {
+                    Image(systemName: isFavorite ? "heart.fill" : "heart")
+                        .foregroundStyle(isFavorite ? .red : .secondary)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(isFavorite ? "movie.favorite.added" : "movie.favorite.add"))
+                if let onContribute {
+                    Button(action: onContribute) {
+                        Image(systemName: "square.and.pencil").foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Suggest story time or place corrections for \(movie.title)")
+                    .accessibilityIdentifier("edit-\(originalMovie.movieQID)")
+                }
             }
         }
         .padding(.vertical, 9)

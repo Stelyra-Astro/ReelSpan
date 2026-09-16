@@ -80,7 +80,9 @@ public actor MovieMetadataService {
                         try? self.cache.writeMetadata(metadata, tmdbID: tmdbID)
                         result = .success(metadata)
                     } catch {
-                        result = .failure(error)
+                        if !(error is CancellationError), let stale = try? self.cache.readMetadata(tmdbID: tmdbID, allowExpired: true) {
+                            result = .success(stale)
+                        } else { result = .failure(error) }
                     }
                     self.finish(tmdbID: tmdbID, generation: generation, result: result)
                 }
@@ -111,10 +113,16 @@ public actor MovieMetadataService {
     public func imageData(url: URL) async throws -> Data {
         try Task.checkCancellation()
         if let data = cache.cachedImage(for: url) { return data }
-        let data = try await fetchWorker(URLRequest(url: url))
-        try Task.checkCancellation()
-        try? cache.writeImage(data, for: url)
-        return data
+        do {
+            let data = try await fetchWorker(URLRequest(url: url))
+            try Task.checkCancellation()
+            try? cache.writeImage(data, for: url)
+            return data
+        } catch {
+            try Task.checkCancellation()
+            if let stale = cache.cachedImage(for: url, allowExpired: true) { return stale }
+            throw error
+        }
     }
 
     public func clearCache() throws { try cache.clear() }

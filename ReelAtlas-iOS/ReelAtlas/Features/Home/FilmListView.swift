@@ -128,6 +128,7 @@ struct FilmListView: View {
                 }
                 Spacer()
                 headerIcon("square.and.pencil") { showContributions = true }
+                    .accessibilityIdentifier("openContributions")
                     .accessibilityLabel("Contribute films and story details")
                 headerIcon("heart") { showFavorites = true }
                 headerIcon("gift") { showTip = true }
@@ -197,6 +198,18 @@ struct FilmListView: View {
                     grouping = "all"
                 }
                 .font(.caption2)
+            }
+            if let message = model.contentSyncError {
+                Text("Cached films are available. Story data update paused: " + message)
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                Button("Retry cached story update") { Task { await model.resumeContentSync() } }.font(.caption2)
+            }
+            if model.isUpdatingContent && model.syncComplete {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Updating cached story data…").font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
             if !model.syncComplete && model.syncTotal > 0 {
                 HStack(spacing: 6) {

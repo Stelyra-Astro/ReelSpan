@@ -19,13 +19,20 @@ struct ContributionRecord: Identifiable, Decodable, Sendable {
 }
 
 struct MissingFilm: Identifiable, Decodable, Sendable {
-    let movie_qid: String
-    let title: String
-    let tmdb_id: Int?
-    let imdb_id: String?
+    let film: CatalogDiscoveryService.Film
     let has_time: Bool
     let has_place: Bool
-    var id: String { movie_qid }
+    var id: String { film.movie_qid }
+    var movie_qid: String { film.movie_qid }
+    var title: String { film.title }
+    private enum CodingKeys: String, CodingKey { case has_time, has_place }
+    init(from decoder: Decoder) throws {
+        film = try CatalogDiscoveryService.Film(from: decoder)
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        has_time = try values.decode(Bool.self, forKey: .has_time)
+        has_place = try values.decode(Bool.self, forKey: .has_place)
+    }
+    func movieData(language: String) -> MovieViewData { CatalogDiscoveryService.movieData(film, language: language) }
 }
 
 private enum ContributionIdentity {
@@ -111,10 +118,17 @@ actor ContributionService {
         })
     }
 
-    func missing(category: String, offset: Int) async throws -> [MissingFilm] {
-        try JSONDecoder().decode([MissingFilm].self, from: try await call("reelspan_missing_films", payload: [
-            "p_category": category, "p_limit": 30, "p_offset": offset
+    func missing(category: String, query: String = "", offset: Int) async throws -> [MissingFilm] {
+        try JSONDecoder().decode([MissingFilm].self, from: try await call("reelspan_missing_film_cards", payload: [
+            "p_category": category, "p_query": String(query.prefix(80)), "p_limit": 30, "p_offset": offset
         ]))
+    }
+
+    func existingFilms(title: String, tmdbID: String, imdbID: String) async throws -> [MovieViewData] {
+        let data = try await call("reelspan_existing_film_candidates", payload: ["p_title": title, "p_tmdb_id": tmdbID, "p_imdb_id": imdbID.lowercased()])
+        return try JSONDecoder().decode([CatalogDiscoveryService.Film].self, from: data).map {
+            CatalogDiscoveryService.movieData($0, language: Locale.preferredLanguages.first ?? "en")
+        }
     }
 
     func missingCounts() async throws -> [String: Int] {
@@ -132,6 +146,7 @@ final class ContributionStore: ObservableObject {
     @Published private(set) var historyCounts: [String: Int] = [:]
     @Published private(set) var missingCounts: [String: Int] = [:]
     @Published private(set) var isLoadingHistory = false
+    @Published private(set) var missingCountsError: String?
     @Published var errorMessage: String?
     private let service = ContributionService()
     private lazy var token = ContributionIdentity.token()
@@ -150,7 +165,16 @@ final class ContributionStore: ObservableObject {
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
         if let counts = try? await service.historyCounts(token: token) { historyCounts = counts }
-        if let counts = try? await service.missingCounts() { missingCounts = counts }
+        await refreshMissingCounts()
+    }
+
+    func refreshMissingCounts() async {
+        do { missingCounts = try await service.missingCounts(); missingCountsError = nil }
+        catch { missingCountsError = "Could not refresh film counts. Pull to retry." }
+    }
+
+    func existingFilms(title: String, tmdbID: String, imdbID: String) async throws -> [MovieViewData] {
+        try await service.existingFilms(title: title, tmdbID: tmdbID, imdbID: imdbID)
     }
 
     func submit(existingMovieQID: String?, title: String, tmdbID: String, imdbID: String,
@@ -160,6 +184,12 @@ final class ContributionStore: ObservableObject {
             payload = ["kind": "existing", "movie_qid": existingMovieQID,
                        "time_entries": times, "place_entries": places]
         } else {
+            let existing = try await service.existingFilms(title: title, tmdbID: tmdbID, imdbID: imdbID)
+            if existing.contains(where: { ContributionDuplicatePolicy.isExisting(title: title, tmdbID: tmdbID, imdbID: imdbID,
+                candidateTitle: $0.title, candidateTMDBID: $0.tmdbID, candidateIMDbID: $0.imdbID, candidateOriginalTitle: $0.catalogOriginalTitle) }) {
+                throw NSError(domain: "ReelSpan.Contribution", code: 2,
+                              userInfo: [NSLocalizedDescriptionKey: "Film already in ReelSpan. Select it to correct story details instead."])
+            }
             payload = ["kind": "new", "title": title, "tmdb_id": tmdbID,
                        "imdb_id": imdbID, "time_entries": times, "place_entries": places,
                        "concept_entries": concepts]
@@ -168,7 +198,7 @@ final class ContributionStore: ObservableObject {
         await refresh()
     }
 
-    func missing(category: String, offset: Int) async throws -> [MissingFilm] {
-        try await service.missing(category: category, offset: offset)
+    func missing(category: String, query: String = "", offset: Int) async throws -> [MissingFilm] {
+        try await service.missing(category: category, query: query, offset: offset)
     }
 }

@@ -20,31 +20,35 @@ actor CatalogDiscoveryService {
         let hasMore: Bool
     }
 
-    private struct Genre: Decodable { let name: String? }
-    private struct Period: Decodable {
+    struct Genre: Decodable { let name: String? }
+    struct Period: Decodable {
         let start: Int?
         let end: Int?
         let qid: String?
     }
-    private struct Place: Decodable {
+    struct Place: Decodable {
         let qid: String
         let name: String
         let name_zh: String?
         let latitude: Double?
         let longitude: Double?
     }
-    private struct Film: Decodable {
+    struct Film: Decodable {
         let movie_qid: String
         let legacy_id: Int
         let tmdb_id: Int?
         let imdb_id: String?
         let title: String
+        let original_title: String?
         let overview: String
         let release_date: String?
         let genres: [Genre]
         let match_reason: String
         let time_ranges: [Period]
         let story_locations: [Place]
+        let poster_url: String?
+        let runtime_minutes: Int?
+        let rating: Double?
     }
     private struct Concept: Decodable {
         let concept_qid: String
@@ -174,7 +178,11 @@ actor CatalogDiscoveryService {
             "p_offset": max(0, parameters.offset)
         ]
         let rows = try JSONDecoder().decode([Film].self, from: try await post("reelatlas_discover", payload: payload))
-        let movies: [MovieViewData] = rows.prefix(maxRows).map { row in
+        let movies = rows.prefix(maxRows).map { Self.movieData($0, language: language) }
+        return Page(movies: movies, hasMore: rows.count > maxRows)
+    }
+
+    static func movieData(_ row: Film, language: String) -> MovieViewData {
             MovieViewData(
                 id: row.legacy_id,
                 movieQID: row.movie_qid,
@@ -186,9 +194,9 @@ actor CatalogDiscoveryService {
                 overviewSource: "", overviewSourceTitle: "", overviewSourceURL: "", overviewLicense: "",
                 releaseDate: row.release_date,
                 releaseYear: row.release_date.flatMap { Int($0.prefix(4)) },
-                runtimeMinutes: nil, sourceImage: nil, originalLanguage: "", rating: 0,
+                runtimeMinutes: row.runtime_minutes, sourceImage: nil, originalLanguage: "", rating: row.rating ?? 0,
                 voteCount: 0, rankingScore: 0, smallPosterFilename: nil,
-                largePosterURL: nil, backdropURL: nil, director: nil, originCountries: [],
+                largePosterURL: row.poster_url, backdropURL: nil, director: nil, originCountries: [],
                 isDocumentary: row.genres.contains { $0.name?.localizedCaseInsensitiveContains("documentary") == true },
                 genres: row.genres.compactMap(\.name),
                 timeRanges: row.time_ranges.compactMap { time in
@@ -200,10 +208,8 @@ actor CatalogDiscoveryService {
                     StoryLocation(rawPlaceQID: $0.qid,
                                   name: language.hasPrefix("zh") ? ($0.name_zh ?? $0.name) : $0.name,
                                   latitude: $0.latitude, longitude: $0.longitude)
-                }, cast: [], matchReason: row.match_reason
+                }, cast: [], matchReason: row.match_reason, catalogOriginalTitle: row.original_title
             )
-        }
-        return Page(movies: movies, hasMore: rows.count > maxRows)
     }
 
     func concepts(language: String) async throws -> [TimeConcept] {
