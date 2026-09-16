@@ -25,6 +25,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var syncComplete = false
     @Published var isListMode = true
     @Published private(set) var whenConcepts: [TimeConcept] = []
+    @Published private(set) var whereCatalog: [ModernWherePlace] = []
+    @Published private(set) var isLoadingWhereCatalog = false
+    @Published private(set) var whereCatalogError: String?
+    @Published private(set) var movieCountryQIDs: [String: [String]] = [:]
+    @Published private(set) var preferredCountryQID = "Q30"
     @Published private(set) var selectedWhen: TimeConcept?
     @Published private(set) var selectedWhere: ModernWherePlace?
     @Published private(set) var globalSearch = ""
@@ -39,6 +44,7 @@ final class AppModel: ObservableObject {
 
     let metadataStore = MovieMetadataStore()
     let tipManager = TipPurchaseManager()
+    let contributions = ContributionStore()
     let iCloudBackup = ICloudBackupManager()
     private var content: ContentRepository?
     private let contentSync = StoryContentSyncService()
@@ -48,6 +54,8 @@ final class AppModel: ObservableObject {
     private var users: UserDatabase?
     private let locationProvider = DeviceLocationProvider()
     private var didResolveInitialLocation = false
+    private var preferredCountryResolved = false
+    private var preferredCountryCode: String?
     private var pendingInitialCoordinate: CLLocationCoordinate2D?
     private var contentBootstrapGate = ContentBootstrapGate()
     private var cloudBackupTask: Task<Void, Never>?
@@ -92,6 +100,7 @@ final class AppModel: ObservableObject {
             // The cached When catalog is ready with the first movie batch. A slow
             // concepts request must not delay showing the initial list.
             whenConcepts = repository.timeConcepts(preferredLanguage: effectiveLanguage)
+            Task { [weak self] in await self?.ensureWhereCatalog() }
 
             if contentBootstrapGate.markContentReady() {
                 await resolvePendingInitialLocation()
@@ -171,8 +180,69 @@ final class AppModel: ObservableObject {
         reload()
     }
 
+    func ensureWhereCatalog() async {
+        // The local snapshot is usable even if Supabase times out. Do not start
+        // multiple simultaneous full catalog requests when list/group/Where open.
+        let cached = await catalog.cachedWhereCatalog(language: effectiveLanguage)
+        if !cached.isEmpty { whereCatalog = cached; refreshPreferredCountry() }
+        guard !isLoadingWhereCatalog else { return }
+        isLoadingWhereCatalog = true
+        defer { isLoadingWhereCatalog = false }
+        do {
+            let updated = try await catalog.refreshWhereCatalog(language: effectiveLanguage)
+            if !updated.isEmpty {
+                whereCatalog = updated
+                refreshPreferredCountry()
+                whereCatalogError = nil
+            }
+        } catch {
+            whereCatalogError = whereCatalog.isEmpty ? error.localizedDescription : nil
+        }
+    }
+
+    private func resolvePreferredCountry(code: String?) {
+        guard !preferredCountryResolved else { return }
+        preferredCountryResolved = true
+        preferredCountryCode = code?.uppercased()
+        refreshPreferredCountry()
+    }
+
+    private func refreshPreferredCountry() {
+        guard let code = preferredCountryCode, !code.isEmpty else {
+            preferredCountryQID = "Q30" // No permission, no fix or reverse geocode failure.
+            return
+        }
+        let englishName = Locale(identifier: "en_US").localizedString(forRegionCode: code) ?? ""
+        let knownAliases: [String: String] = ["US": "United States", "CN": "People's Republic of China",
+                                              "GB": "United Kingdom", "KR": "South Korea", "KP": "North Korea",
+                                              "CZ": "Czech Republic", "TR": "Turkey"]
+        let name = knownAliases[code] ?? englishName
+        if let matching = whereCatalog.first(where: {
+            $0.category == "country" && $0.englishName.caseInsensitiveCompare(name) == .orderedSame
+        }) {
+            if preferredCountryQID != matching.qid {
+                preferredCountryQID = matching.qid
+                if isListMode && selectedSort == "recommended" && selectedWhere == nil { reload() }
+            }
+        }
+    }
+
+    func loadCountryAssociations() async {
+        let missing = movies.map(\.movieQID).filter { movieCountryQIDs[$0] == nil }
+        guard !missing.isEmpty else { return }
+        for offset in stride(from: 0, to: missing.count, by: 30) {
+            let qids = Array(missing.dropFirst(offset).prefix(30))
+            guard let found = try? await catalog.movieCountryLinks(movieQIDs: qids) else { return }
+            for qid in qids { movieCountryQIDs[qid] = found[qid] ?? [] }
+        }
+    }
+
     func findModernPlaces(_ query: String) async -> [ModernWherePlace] {
-        (try? await catalog.modernPlaces(query: query, language: effectiveLanguage)) ?? []
+        await ensureWhereCatalog()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return whereCatalog }
+        return whereCatalog.filter { $0.name.localizedCaseInsensitiveContains(trimmed) ||
+            $0.englishName.localizedCaseInsensitiveContains(trimmed) }
     }
 
     var effectiveLanguage: String {
@@ -210,6 +280,7 @@ final class AppModel: ObservableObject {
 
     private func resolvePendingInitialLocation() async {
         guard let coordinate = pendingInitialCoordinate else {
+            resolvePreferredCountry(code: nil)
             applyCaliforniaFallback()
             return
         }
@@ -370,6 +441,9 @@ final class AppModel: ObservableObject {
         do {
             let selection = try await operation()
             guard !Task.isCancelled else { return }
+            if didResolveInitialLocation && !preferredCountryResolved {
+                resolvePreferredCountry(code: selection.countryCode)
+            }
             selectedCoordinate = selection.coordinate
             displayedPlaceName = selection.displayName
             mapViewportIntent.selectionResolved(selection.viewport, source: source)
@@ -484,7 +558,8 @@ final class AppModel: ObservableObject {
         let search = globalSearch
         let concept = selectedWhen
         let genre = selectedGenre
-        let sort = selectedSort
+        let sort = selectedSort == "recommended" && selectedWhere == nil
+            ? "country:\(preferredCountryQID)" : selectedSort
         moviePageTask = Task { [weak self] in
             guard let self else { return }
             if listMode && !favoritesOnly {

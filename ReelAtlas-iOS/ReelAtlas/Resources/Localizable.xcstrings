@@ -1060,13 +1060,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "TMDB — movie metadata and images\n\nWikidata / open knowledge sources — story location, story period and identifiers\n\nCurated data — normalization and correction of story time/location data"
+            "value": "TMDB — film metadata, cast, crew and imagery. This product uses the TMDB API but is not endorsed or certified by TMDB.\n\nWikidata — film identifiers and historical story-time / story-place evidence.\n\nReelSpan editorial data — normalization of modern locations, calendar periods and historical concepts.\n\nCommunity contributions — suggested film entries and story-time / story-place corrections, reviewed before publication.\n\nSupabase and Cloudflare — data hosting and delivery infrastructure, not editorial content sources. IMDb IDs, when shown, are cross-reference identifiers; IMDb content is not republished."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "TMDB — 电影元数据和图片\n\nWikidata / 开放知识来源 — 故事地点、故事时期和标识符\n\n整理数据 — 故事时间/地点数据的归一化与修正"
+            "value": "TMDB — 电影元数据、演职员及图片。本产品使用 TMDB API，但未得到 TMDB 背书或认证。\n\nWikidata — 电影标识符及故事时间、地点的历史资料。\n\nReelSpan 编辑数据 — 现代地点、日历时期与历史概念的标准化整理。\n\n社区贡献 — 新电影及故事时间、地点的建议，经审核后才发布。\n\nSupabase 和 Cloudflare — 数据托管与分发设施，并非电影内容来源。IMDb ID 仅用于交叉引用，不转载 IMDb 的内容。"
           }
         }
       }
@@ -2225,92 +2225,242 @@
     },
     "tip.cancelled": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Payment was cancelled." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "付款已取消。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Payment was cancelled."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "付款已取消。"
+          }
+        }
       }
     },
     "tip.description": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Tips are voluntary and do not unlock features, provide digital content, create a subscription, grant credits, or create a permanent entitlement." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打赏是自愿的，不会解锁功能、提供数字内容、创建订阅、授予 credits 或产生永久权益。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tips are voluntary and do not unlock features, provide digital content, create a subscription, grant credits, or create a permanent entitlement."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打赏是自愿的，不会解锁功能、提供数字内容、创建订阅、授予 credits 或产生永久权益。"
+          }
+        }
       }
     },
     "tip.large": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Large tip" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "大额打赏" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Large tip"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大额打赏"
+          }
+        }
       }
     },
     "tip.loading": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Loading Apple prices…" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在加载 Apple 价格…" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading Apple prices…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在加载 Apple 价格…"
+          }
+        }
       }
     },
     "tip.medium": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Medium tip" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "中额打赏" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medium tip"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中额打赏"
+          }
+        }
       }
     },
     "tip.payment_apple": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Payment is handled by Apple." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "付款由 Apple 处理。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Payment is handled by Apple."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "付款由 Apple 处理。"
+          }
+        }
       }
     },
     "tip.pending": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Your tip is awaiting approval." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "你的打赏正在等待批准。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your tip is awaiting approval."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的打赏正在等待批准。"
+          }
+        }
       }
     },
     "tip.small": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Small tip" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "小额打赏" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Small tip"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小额打赏"
+          }
+        }
       }
     },
     "tip.support": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Support ReelSpan" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "支持 ReelSpan" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Support ReelSpan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持 ReelSpan"
+          }
+        }
       }
     },
     "tip.thanks": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Thank you for supporting ReelSpan." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "感谢你支持 ReelSpan。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thank you for supporting ReelSpan."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "感谢你支持 ReelSpan。"
+          }
+        }
       }
     },
     "tip.title": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Support ReelSpan" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "支持 ReelSpan" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Support ReelSpan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支持 ReelSpan"
+          }
+        }
       }
     },
     "tip.try_again": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Try again" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重试" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试"
+          }
+        }
       }
     },
     "tip.unavailable": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Tips are currently unavailable in the App Store." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "App Store 中暂时无法使用打赏。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tips are currently unavailable in the App Store."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App Store 中暂时无法使用打赏。"
+          }
+        }
       }
     },
     "tip.unverified": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "The App Store payment could not be verified." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法验证 App Store 付款。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The App Store payment could not be verified."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法验证 App Store 付款。"
+          }
+        }
       }
     },
     "tip.waiting": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Waiting for Apple…" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在等待 Apple…" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for Apple…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待 Apple…"
+          }
+        }
       }
     },
     "year.bce": {

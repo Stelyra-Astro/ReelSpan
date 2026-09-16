@@ -61,6 +61,101 @@ actor CatalogDiscoveryService {
         let category: String
     }
 
+    private struct WhereCatalogRow: Codable {
+        let place_qid: String
+        let name_en: String
+        let name_zh: String
+        let category: String
+        let continent: String
+        let country_qid: String
+        let film_count: Int
+    }
+    private struct WhereSnapshot: Codable {
+        let revision: Int
+        let places: [WhereCatalogRow]
+    }
+    private struct CountryLink: Decodable {
+        let movie_qid: String
+        let country_qid: String
+    }
+
+    private var whereSnapshot: WhereSnapshot?
+    private var lastWhereCheck = Date.distantPast
+
+    private func whereCacheURL() throws -> URL {
+        let directory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                                    appropriateFor: nil, create: true)
+        return directory.appendingPathComponent("reelspan-where-catalog-v1.json")
+    }
+
+    private func present(_ rows: [WhereCatalogRow], language: String) -> [ModernWherePlace] {
+        rows.map { row in
+            ModernWherePlace(qid: row.place_qid,
+                             name: language.hasPrefix("zh") && !row.name_zh.isEmpty ? row.name_zh : row.name_en,
+                             category: row.category, continent: row.continent,
+                             countryQID: row.country_qid, filmCount: row.film_count, englishName: row.name_en)
+        }
+    }
+
+    /// Return on-device choices immediately. The caller may separately refresh the revision.
+    func cachedWhereCatalog(language: String) -> [ModernWherePlace] {
+        if whereSnapshot == nil, let url = try? whereCacheURL(),
+           let data = try? Data(contentsOf: url) {
+            whereSnapshot = try? JSONDecoder().decode(WhereSnapshot.self, from: data)
+        }
+        return present(whereSnapshot?.places ?? [], language: language)
+    }
+
+    func refreshWhereCatalog(language: String) async throws -> [ModernWherePlace] {
+        _ = cachedWhereCatalog(language: language)
+        guard whereSnapshot == nil || Date().timeIntervalSince(lastWhereCheck) > 300 else {
+            return present(whereSnapshot?.places ?? [], language: language)
+        }
+        let revisionData = try await post("reelspan_where_revision", payload: [:])
+        let revision = try JSONDecoder().decode(Int.self, from: revisionData)
+        if let snapshot = whereSnapshot, snapshot.revision == revision {
+            lastWhereCheck = Date()
+            return present(snapshot.places, language: language)
+        }
+        var all: [WhereCatalogRow] = []
+        var offset = 0
+        while true {
+            var components = URLComponents(url: baseURL.appendingPathComponent("reelspan_where_catalog"),
+                                           resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "select", value: "place_qid,name_en,name_zh,category,continent,country_qid,film_count"),
+                                     URLQueryItem(name: "order", value: "continent.asc,category.asc,name_en.asc"),
+                                     URLQueryItem(name: "limit", value: "1000"),
+                                     URLQueryItem(name: "offset", value: String(offset))]
+            let page = try JSONDecoder().decode([WhereCatalogRow].self, from: try await get(components.url!))
+            all.append(contentsOf: page)
+            if page.count < 1000 { break }
+            offset += page.count
+        }
+        guard !all.isEmpty else { throw SQLiteError.step("Where catalog has not been published") }
+        let next = WhereSnapshot(revision: revision, places: all)
+        if let url = try? whereCacheURL(), let data = try? JSONEncoder().encode(next) {
+            try? data.write(to: url, options: .atomic)
+        }
+        whereSnapshot = next
+        lastWhereCheck = Date()
+        return present(all, language: language)
+    }
+
+    /// A batched lookup used only while 'Group by place' is visible.
+    func movieCountryLinks(movieQIDs: [String]) async throws -> [String: [String]] {
+        guard !movieQIDs.isEmpty else { return [:] }
+        var components = URLComponents(url: baseURL.appendingPathComponent("story_movie_locations"),
+                                       resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "select", value: "movie_qid,country_qid"),
+                                 URLQueryItem(name: "movie_qid", value: "in.(\(movieQIDs.joined(separator: ",")))"),
+                                 URLQueryItem(name: "country_qid", value: "not.is.null"),
+                                 URLQueryItem(name: "is_deleted", value: "eq.false"),
+                                 URLQueryItem(name: "limit", value: "1000")]
+        let rows = try JSONDecoder().decode([CountryLink].self, from: try await get(components.url!))
+        let groups = Dictionary(grouping: rows, by: \.movie_qid)
+        return groups.mapValues { Array(Set($0.map(\.country_qid))) }
+    }
+
     private let baseURL = URL(string: "https://injisguyqfxfwgnbtghe.supabase.co/rest/v1")!
     private let publishableKey = "sb_publishable_OEEsH_hGwuWAsLoh95SiXw_mbj3D6i2"
 

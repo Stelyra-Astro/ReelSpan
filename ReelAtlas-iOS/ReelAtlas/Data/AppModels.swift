@@ -65,6 +65,10 @@ struct ModernWherePlace: Identifiable, Hashable, Sendable {
     let qid: String
     let name: String
     let category: String
+    var continent: String = ""
+    var countryQID: String = ""
+    var filmCount: Int = 0
+    var englishName: String = ""
 }
 
 struct SearchSelectionMarker: Identifiable, Equatable {

@@ -6,6 +6,8 @@ struct FilmListView: View {
     @State private var search = ""
     @State private var grouping = "all"
     @State private var selectedMovie: MovieViewData?
+    @State private var correctingMovie: MovieViewData?
+    @State private var showContributions = false
     @State private var showSettings = false
     @State private var showFavorites = false
     @State private var showTip = false
@@ -13,8 +15,10 @@ struct FilmListView: View {
     @State private var showWhen = false
     @State private var showYearPicker = false
     @State private var whereQuery = ""
-    @State private var whereResults: [ModernWherePlace] = []
+    @State private var selectedContinent: String?
+    @State private var selectedCountryQID: String?
     @State private var whenCategory: String?
+    @State private var selectedCentury: Int?
     @State private var whenQuery = ""
     @State private var yearFrom = "1900"
     @State private var yearTo = "2000"
@@ -30,17 +34,26 @@ struct FilmListView: View {
                 LazyVStack(spacing: 0) {
                     if grouping == "all" {
                         ForEach(model.movies) { movie in filmRow(movie) }
+                    } else if grouping == "place" {
+                        if model.whereCatalog.isEmpty || (model.movieCountryQIDs.isEmpty && !model.movies.isEmpty) {
+                            ProgressView("Grouping story countries…").padding(24)
+                        } else {
+                            ForEach(continentGroups) { continent in
+                                HStack {
+                                    Image(systemName: "globe.europe.africa")
+                                    Text(continent.title).font(.system(.title3, design: .serif).bold())
+                                    Spacer()
+                                }
+                                .foregroundStyle(navy).padding(.horizontal, 15).padding(.top, 20)
+                                ForEach(continent.countryGroups) { country in
+                                    groupHeading(country.title, count: country.movies.count, icon: "mappin")
+                                    ForEach(country.movies) { movie in filmRow(movie) }
+                                }
+                            }
+                        }
                     } else {
                         ForEach(groupedMovies) { group in
-                            HStack {
-                                Image(systemName: grouping == "place" ? "mappin" : "calendar")
-                                Text(group.title).font(.system(.headline, design: .serif))
-                                Text("\(group.movies.count)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .foregroundStyle(navy)
-                            .padding(.horizontal, 15).padding(.top, 18).padding(.bottom, 6)
+                            groupHeading(group.title, count: group.movies.count, icon: "calendar")
                             ForEach(group.movies) { movie in filmRow(movie) }
                         }
                     }
@@ -75,6 +88,12 @@ struct FilmListView: View {
             guard !Task.isCancelled else { return }
             model.setGlobalSearch(search)
         }
+        .onChange(of: grouping) { _, value in
+            if value == "place" { Task { await model.ensureWhereCatalog(); await model.loadCountryAssociations() } }
+        }
+        .onChange(of: model.movies.map(\.movieQID)) { _, _ in
+            if grouping == "place" { Task { await model.loadCountryAssociations() } }
+        }
         .sheet(isPresented: $showSettings) { SettingsView().environmentObject(model) }
         .sheet(isPresented: $showFavorites) { FavoritesView().environmentObject(model) }
         .sheet(isPresented: $showTip) { TipSheet(manager: model.tipManager) }
@@ -89,19 +108,27 @@ struct FilmListView: View {
         .fullScreenCover(item: $selectedMovie) { movie in
             MovieDetailView(movie: movie).environmentObject(model)
         }
+        .fullScreenCover(item: $correctingMovie) { movie in
+            ContributionHubView(movie: movie).environmentObject(model)
+        }
+        .fullScreenCover(isPresented: $showContributions) {
+            ContributionHubView().environmentObject(model)
+        }
     }
 
     private var header: some View {
         VStack(spacing: 10) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Reel Atlas")
+                    Text("ReelSpan")
                         .font(.system(size: 27, weight: .bold, design: .serif))
                         .tracking(-1.1).foregroundStyle(navy)
                     Text("Cinema across time & place")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
+                headerIcon("square.and.pencil") { showContributions = true }
+                    .accessibilityLabel("Contribute films and story details")
                 headerIcon("heart") { showFavorites = true }
                 headerIcon("gift") { showTip = true }
                 headerIcon("gearshape") { showSettings = true }
@@ -129,10 +156,10 @@ struct FilmListView: View {
             .background(pale, in: RoundedRectangle(cornerRadius: 11))
             HStack(spacing: 5) {
                 filterChip("Where", value: model.selectedWhere?.name, symbol: "mappin") {
-                    whereQuery = ""; showWhere = true
+                    whereQuery = ""; selectedContinent = nil; selectedCountryQID = nil; showWhere = true
                 }
                 filterChip("When", value: whenLabel, symbol: "calendar") {
-                    whenCategory = nil; whenQuery = ""; showWhen = true
+                    whenCategory = nil; selectedCentury = nil; whenQuery = ""; showWhen = true
                 }
                 Menu {
                     Button("All genres") { model.setGenre(nil) }
@@ -227,45 +254,162 @@ struct FilmListView: View {
 
     @ViewBuilder
     private func filmRow(_ movie: MovieViewData) -> some View {
-        MovieRowView(movie: movie, isFavorite: model.favoriteIDs.contains(movie.id)) {
-            model.toggleFavorite(movie.id)
-        }
+        MovieRowView(movie: movie, isFavorite: model.favoriteIDs.contains(movie.id),
+                     onFavorite: { model.toggleFavorite(movie.id) },
+                     onContribute: { correctingMovie = movie })
         .onTapGesture { selectedMovie = movie }
         Divider().padding(.leading, 83)
     }
 
     private struct FilmGroup: Identifiable {
+        let id: String
         let title: String
         let movies: [MovieViewData]
+    }
+
+    private struct ContinentGroup: Identifiable {
+        let title: String
+        let countryGroups: [FilmGroup]
         var id: String { title }
     }
 
-    private var groupedMovies: [FilmGroup] {
-        let groups = Dictionary(grouping: model.movies) { movie in
-            if grouping == "place" { return movie.locations.first?.name ?? "Unspecified place" }
-            return movie.timeRanges.first?.displayText ?? "Unspecified time"
+    private func groupHeading(_ label: String, count: Int, icon: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+            Text(label).font(.system(.headline, design: .serif))
+            Text("\(count)").font(.caption).foregroundStyle(.secondary)
+            Spacer()
         }
-        return groups.keys.sorted().map { FilmGroup(title: $0, movies: groups[$0] ?? []) }
+        .foregroundStyle(navy).padding(.horizontal, 15).padding(.top, 15).padding(.bottom, 6)
+    }
+
+    /// Movie-country links are fetched only for the visible page. A film set in multiple
+    /// countries appears once within each country and never duplicates within one country.
+    private var countryGroups: [FilmGroup] {
+        let countries = Dictionary(uniqueKeysWithValues: model.whereCatalog
+            .filter { $0.category == "country" }.map { ($0.qid, $0) })
+        var groups: [String: [MovieViewData]] = [:]
+        for movie in model.movies {
+            let qids = Set(model.movieCountryQIDs[movie.movieQID] ?? [])
+            let supported = qids.filter { countries[$0] != nil }
+            if supported.isEmpty {
+                groups["unmapped", default: []].append(movie)
+            } else {
+                for qid in supported { groups[qid, default: []].append(movie) }
+            }
+        }
+        return groups.map { key, films in
+            FilmGroup(id: key, title: countries[key]?.name ?? "Other / Unmapped stories", movies: films)
+        }
+        .sorted { lhs, rhs in
+            if lhs.id == "unmapped" { return false }
+            if rhs.id == "unmapped" { return true }
+            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private var continentGroups: [ContinentGroup] {
+        let lookup = Dictionary(uniqueKeysWithValues: model.whereCatalog
+            .filter { $0.category == "country" }.map { ($0.qid, $0.continent) })
+        let grouped = Dictionary(grouping: countryGroups) { lookup[$0.id] ?? "Other locations" }
+        let order = ["Africa", "Asia", "Europe", "North America", "South America", "Oceania", "Other locations"]
+        return order.compactMap { name in
+            guard let countries = grouped[name], !countries.isEmpty else { return nil }
+            return ContinentGroup(title: name, countryGroups: countries)
+        }
+    }
+
+    private var groupedMovies: [FilmGroup] {
+        var grouped: [Int: [MovieViewData]] = [:]
+        var undated: [MovieViewData] = []
+        var broad: [MovieViewData] = []
+        for movie in model.movies {
+            let spans = movie.timeRanges.map { FilmYearSpan($0.startYear, $0.endYear) }
+            let centuries = FilmGroupRules.centuries(for: spans)
+            if centuries.isEmpty {
+                if FilmGroupRules.hasOnlyBroadTime(spans) { broad.append(movie) }
+                else { undated.append(movie) }
+            }
+            for century in centuries { grouped[century, default: []].append(movie) }
+        }
+        var groups = grouped.keys.sorted(by: >).map { century in
+            FilmGroup(id: String(century), title: FilmGroupRules.centuryLabel(century),
+                      movies: grouped[century] ?? [])
+        }
+        if !broad.isEmpty {
+            groups.append(FilmGroup(id: "broad", title: "Broad or uncertain time", movies: broad))
+        }
+        if !undated.isEmpty {
+            groups.append(FilmGroup(id: "undated", title: "Unspecified time", movies: undated))
+        }
+        return groups
+    }
+
+    private let continentOrder = ["Africa", "Asia", "Europe", "North America", "South America", "Oceania"]
+
+    private var whereMatches: [ModernWherePlace] {
+        let term = whereQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return model.whereCatalog }
+        return model.whereCatalog.filter {
+            $0.name.localizedCaseInsensitiveContains(term) || $0.englishName.localizedCaseInsensitiveContains(term)
+        }
     }
 
     private var whereSheet: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                TextField("Search modern countries, states, cities", text: $whereQuery)
+                TextField("Search countries or cities", text: $whereQuery)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder).padding()
                 List {
                     Button("Anywhere · All places") { model.setWherePlace(nil); showWhere = false }
-                    ForEach(whereResults) { place in
-                        Button {
-                            model.setWherePlace(place)
-                            showWhere = false
-                        } label: {
-                            HStack {
-                                Image(systemName: place.category == "country" ? "globe" : "mappin")
-                                Text(place.name)
-                                Spacer()
-                                if model.selectedWhere?.qid == place.qid { Image(systemName: "checkmark") }
+                    if model.whereCatalog.isEmpty {
+                        if model.isLoadingWhereCatalog {
+                            ProgressView("Loading place catalog…")
+                        } else {
+                            Text(model.whereCatalogError ?? "Place options are unavailable right now.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("Retry place catalog") { Task { await model.ensureWhereCatalog() } }
+                        }
+                    } else if !whereQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Section("Matching countries and cities") {
+                            ForEach(whereMatches) { place in whereChoice(place) }
+                            if whereMatches.isEmpty { Text("No indexed films in matching places").foregroundStyle(.secondary) }
+                        }
+                    } else if selectedContinent == nil {
+                        Section("Continents") {
+                            ForEach(continentOrder.filter { continent in
+                                model.whereCatalog.contains { $0.continent == continent && $0.category == "country" }
+                            }, id: \.self) { continent in
+                                Button { selectedContinent = continent } label: {
+                                    HStack { Text(continent); Spacer(); Image(systemName: "chevron.right") }
+                                }
+                            }
+                        }
+                    } else if selectedCountryQID == nil {
+                        Section("\(selectedContinent!) · Countries") {
+                            ForEach(model.whereCatalog.filter {
+                                $0.category == "country" && $0.continent == selectedContinent && $0.filmCount > 0
+                            }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { country in
+                                Button { selectedCountryQID = country.qid } label: {
+                                    HStack {
+                                        Text(country.name)
+                                        Spacer()
+                                        Text("\(country.filmCount)").foregroundStyle(.secondary).font(.caption)
+                                        Image(systemName: "chevron.right")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Section("Country and cities") {
+                            if let country = model.whereCatalog.first(where: { $0.qid == selectedCountryQID }) {
+                                whereChoice(country, displayName: "All of \(country.name)")
+                                ForEach(model.whereCatalog.filter {
+                                    $0.category == "city" && $0.countryQID == selectedCountryQID && $0.filmCount > 0
+                                }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { city in
+                                    whereChoice(city)
+                                }
                             }
                         }
                     }
@@ -273,17 +417,36 @@ struct FilmListView: View {
             }
             .navigationTitle("Where")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { showWhere = false } } }
-            .task(id: whereQuery) {
-                if !whereQuery.isEmpty {
-                    do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !whereQuery.isEmpty {
+                        Button("Clear") { whereQuery = "" }
+                    } else if selectedCountryQID != nil {
+                        Button("Back") { selectedCountryQID = nil }
+                    } else if selectedContinent != nil {
+                        Button("Back") { selectedContinent = nil }
+                    }
                 }
-                let choices = await model.findModernPlaces(whereQuery)
-                guard !Task.isCancelled else { return }
-                whereResults = choices
+                ToolbarItem(placement: .topBarTrailing) { Button("Done") { showWhere = false } }
             }
         }
+        .task { await model.ensureWhereCatalog() }
         .presentationDetents([.large])
+    }
+
+    private func whereChoice(_ place: ModernWherePlace, displayName: String? = nil) -> some View {
+        Button {
+            model.setWherePlace(place)
+            showWhere = false
+        } label: {
+            HStack {
+                Image(systemName: place.category == "country" ? "globe" : "mappin")
+                Text(displayName ?? place.name)
+                Spacer()
+                Text("\(place.filmCount)").font(.caption).foregroundStyle(.secondary)
+                if model.selectedWhere?.qid == place.qid { Image(systemName: "checkmark") }
+            }
+        }
     }
 
     private struct WhenCategory: Identifiable {
@@ -322,8 +485,27 @@ struct FilmListView: View {
                                 }
                             }
                         }
+                    } else if whenCategory == "calendar" && selectedCentury == nil && whenQuery.isEmpty {
+                        Section("Choose a century") {
+                            ForEach(calendarCenturies, id: \.self) { century in
+                                Button { selectedCentury = century } label: {
+                                    HStack {
+                                        Text(FilmGroupRules.centuryLabel(century))
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         Section(whenCategory.flatMap { key in whenCategories.first { $0.id == key }?.title } ?? "All periods") {
+                            if let century = selectedCentury, whenQuery.isEmpty {
+                                Button("All films in \(FilmGroupRules.centuryLabel(century))") {
+                                    let years = FilmGroupRules.centuryBounds(century)
+                                    model.setStoryTimeRange(startYear: years.start, endYear: years.end)
+                                    showWhen = false
+                                }
+                            }
                             ForEach(visibleConcepts) { concept in
                                 Button {
                                     model.setWhenConcept(concept)
@@ -364,7 +546,8 @@ struct FilmListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if whenCategory != nil { Button("Back") { whenCategory = nil } }
+                    if selectedCentury != nil { Button("Back") { selectedCentury = nil } }
+                    else if whenCategory != nil { Button("Back") { whenCategory = nil } }
                 }
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { showWhen = false } }
             }
@@ -372,10 +555,25 @@ struct FilmListView: View {
         .presentationDetents([.large])
     }
 
+    private var calendarCenturies: [Int] {
+        let spans = model.whenConcepts.filter { $0.category == "calendar" }.compactMap { concept -> FilmYearSpan? in
+            guard let start = concept.startYear, let end = concept.endYear else { return nil }
+            return FilmYearSpan(start, end)
+        }
+        return FilmGroupRules.centuries(for: spans)
+    }
+
     private var visibleConcepts: [TimeConcept] {
         model.whenConcepts.filter { concept in
             (whenCategory == nil || concept.category == whenCategory) &&
-            (whenQuery.isEmpty || concept.name.localizedCaseInsensitiveContains(whenQuery))
+            (whenQuery.isEmpty || concept.name.localizedCaseInsensitiveContains(whenQuery)) &&
+            (whenCategory != "era" || !FilmGroupRules.isCalendarLabel(concept.name)) &&
+            (selectedCentury == nil || {
+                guard let start = concept.startYear, let end = concept.endYear,
+                      let century = selectedCentury else { return false }
+                let bounds = FilmGroupRules.centuryBounds(century)
+                return start <= bounds.end && end >= bounds.start
+            }())
         }
         .prefix(150)
         .map { $0 }

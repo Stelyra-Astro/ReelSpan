@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var showFavorites = false
     @State private var showTip = false
+    @State private var showContributions = false
+    @State private var correctingMovie: MovieViewData?
     @State private var selectedDrawerMovie: MovieViewData?
     @State private var selectedSearchMovie: MovieViewData?
     @StateObject private var placeSearch = AdministrativePlaceSearch()
@@ -143,6 +145,12 @@ struct HomeView: View {
         .sheet(isPresented: $showTip, onDismiss: restoreResultsDrawer) {
             TipSheet(manager: model.tipManager)
         }
+        .fullScreenCover(isPresented: $showContributions) {
+            ContributionHubView().environmentObject(model)
+        }
+        .fullScreenCover(item: $correctingMovie) { movie in
+            ContributionHubView(movie: movie).environmentObject(model)
+        }
         .fullScreenCover(item: $selectedSearchMovie, onDismiss: restoreResultsDrawer) { movie in
             MovieDetailView(movie: movie).environmentObject(model)
         }
@@ -209,6 +217,12 @@ struct HomeView: View {
                         scheduleMovieSearch(query)
                         DispatchQueue.main.async { searchIsFocused = true }
                     }
+                }
+
+                roundControlButton(systemName: "square.and.pencil", accessibilityLabel: "Contribute") {
+                    collapseSearch()
+                    drawerState.move(to: .hidden)
+                    showContributions = true
                 }
 
                 roundControlButton(
@@ -492,10 +506,10 @@ struct HomeView: View {
                         ForEach(model.movies) { movie in
                             MovieRowView(
                                 movie: movie,
-                                isFavorite: model.favoriteIDs.contains(movie.id)
-                            ) {
-                                model.toggleFavorite(movie.id)
-                            }
+                                isFavorite: model.favoriteIDs.contains(movie.id),
+                                onFavorite: { model.toggleFavorite(movie.id) },
+                                onContribute: { correctingMovie = movie }
+                            )
                             .onTapGesture {
                                 selectedDrawerMovie = movie
                             }
@@ -627,6 +641,7 @@ struct FavoritesView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var selectedMovie: MovieViewData?
+    @State private var correctingMovie: MovieViewData?
 
     var body: some View {
         NavigationStack {
@@ -641,9 +656,9 @@ struct FavoritesView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(model.favoriteMovies) { movie in
-                                MovieRowView(movie: movie, isFavorite: true) {
-                                    model.toggleFavorite(movie.id)
-                                }
+                                MovieRowView(movie: movie, isFavorite: true,
+                                             onFavorite: { model.toggleFavorite(movie.id) },
+                                             onContribute: { correctingMovie = movie })
                                 .onTapGesture {
                                     selectedMovie = movie
                                 }
@@ -663,6 +678,9 @@ struct FavoritesView: View {
             }
             .fullScreenCover(item: $selectedMovie) { movie in
                 MovieDetailView(movie: movie).environmentObject(model)
+            }
+            .fullScreenCover(item: $correctingMovie) { movie in
+                ContributionHubView(movie: movie).environmentObject(model)
             }
         }
     }

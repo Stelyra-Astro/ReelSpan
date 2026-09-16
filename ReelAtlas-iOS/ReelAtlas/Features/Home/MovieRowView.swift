@@ -10,11 +10,13 @@ struct MovieRowView: View {
     }
     let isFavorite: Bool
     let onFavorite: () -> Void
+    let onContribute: (() -> Void)?
 
-    init(movie: MovieViewData, isFavorite: Bool, onFavorite: @escaping () -> Void) {
+    init(movie: MovieViewData, isFavorite: Bool, onFavorite: @escaping () -> Void, onContribute: (() -> Void)? = nil) {
         self.originalMovie = movie
         self.isFavorite = isFavorite
         self.onFavorite = onFavorite
+        self.onContribute = onContribute
     }
 
     var body: some View {
@@ -33,6 +35,15 @@ struct MovieRowView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(isFavorite ? "movie.favorite.added" : "movie.favorite.add"))
+                }
+
+                if let onContribute {
+                    Button(action: onContribute) {
+                        Label("Correct / contribute", systemImage: "square.and.pencil")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Suggest story time or place corrections for \(movie.title)")
                 }
 
                 HStack(spacing: 8) {

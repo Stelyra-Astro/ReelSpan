@@ -3,6 +3,7 @@ import SwiftUI
 struct MovieDetailView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showCorrection = false
     private let originalMovie: MovieViewData
     private var movie: MovieViewData {
         guard let id = originalMovie.tmdbID,
@@ -57,6 +58,11 @@ struct MovieDetailView: View {
                             )
                         }
 
+                        Button { showCorrection = true } label: {
+                            Label("Correct / contribute story time or place", systemImage: "square.and.pencil")
+                        }
+                        .buttonStyle(.bordered)
+
                         if !movie.locations.isEmpty {
                             Text(movie.locations.map(\.name).joined(separator: " · "))
                                 .font(.caption)
@@ -107,6 +113,9 @@ struct MovieDetailView: View {
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showCorrection) {
+            ContributionHubView(movie: originalMovie).environmentObject(model)
         }
         .onAppear { if let id = originalMovie.tmdbID { model.metadataStore.beginDetail(id) } }
         .onDisappear { if let id = originalMovie.tmdbID { model.metadataStore.endDetail(id) } }

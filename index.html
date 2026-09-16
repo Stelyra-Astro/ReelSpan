@@ -12,6 +12,7 @@
     <nav class="nav">
       <a class="brand" href="./">ReelSpan</a>
       <div class="nav-links">
+        <a href="#try-app">Try the app</a>
         <a href="#features">Features</a>
         <a href="./privacy/">Privacy</a>
         <a href="./terms/">Terms</a>
@@ -27,17 +28,44 @@
         <h1>Explore films through place and time.</h1>
         <p>ReelSpan helps you discover films through the places where their stories unfold and the periods they inhabit.</p>
         <div class="cta-row">
-          <a class="button primary" href="#features">Explore ReelSpan</a>
+          <a class="button primary" href="#try-app">Try an interactive preview ↗</a>
           <a class="button" href="mailto:Stelyra-Astro@proton.me">Contact</a>
         </div>
       </div>
-      <div class="poster-card" aria-hidden="true">
-        <div>
-          <div class="mock-meta">Place · Story period</div>
-          <div class="mock-title">A map of cinema,<br />across time.</div>
+      <div class="hero-preview" aria-label="ReelSpan list mode preview">
+        <div class="hero-preview-top"><span>ReelSpan</span><span class="preview-badge">LIST / MAP</span></div>
+        <div class="hero-preview-search">⌕ &nbsp; Films, people, eras, places…</div>
+        <div class="hero-preview-filters"><span>Where ⌄</span><span>When ⌄</span><span>Genre ⌄</span></div>
+        <div class="hero-preview-film"><span class="mini-poster">RS</span><div><strong>The Last Emperor</strong><small>China · 20th century</small><em>Explore the setting behind the story</em></div></div>
+        <div class="hero-preview-film"><span class="mini-poster alternative">RS</span><div><strong>Midnight in Paris</strong><small>France · 1920s</small><em>Explore stories across centuries</em></div></div>
+        <a class="hero-preview-link" href="#try-app">Open the interactive demo →</a>
+      </div>
+    </section>
+
+    <section class="section try-app" id="try-app" aria-labelledby="try-title">
+      <div class="try-intro"><div><div class="eyebrow">Interactive preview</div><h2 id="try-title">Try ReelSpan in your browser.</h2>
+      <p>Search films, browse by continent and country, explore centuries, save favorites, and test the contribution flow.</p>
+      <p class="demo-disclosure"><strong>Demo data:</strong> this preview uses a small illustrative film collection. It does not access your device location, your account, the live catalog, or the real submission service.</p></div>
+      <div class="try-tips">① Select a place<br/>② Choose a century<br/>③ Open a film or contribute</div></div>
+      <div class="demo-shell">
+        <div class="demo-phone"><div class="demo-island" aria-hidden="true"></div>
+          <div class="demo-app" id="reelspan-demo" aria-label="Interactive ReelSpan app simulation">
+            <div class="demo-app-header"><div><div class="demo-app-name">ReelSpan</div><div class="demo-app-subtitle">Cinema across time & place</div></div>
+              <button type="button" class="demo-icon-button" data-action="contribute" aria-label="Contribute a film">✎</button>
+              <button type="button" class="demo-icon-button" data-action="favorites" aria-label="Favorites">♡</button></div>
+            <div class="demo-segment" role="group" aria-label="View mode"><button type="button" class="active" data-view="list">☷ &nbsp; List</button><button type="button" data-view="map">♧ &nbsp; Map</button></div>
+            <label class="demo-search"><span>⌕</span><input id="demo-search" type="search" placeholder="Search films, people, eras, places…" autocomplete="off" aria-label="Search demo films" /></label>
+            <div class="demo-filters"><button type="button" data-panel="where" id="demo-where-button">Where ⌄</button><button type="button" data-panel="when" id="demo-when-button">When ⌄</button><button type="button" data-panel="genre" id="demo-genre-button">Genre ⌄</button><button type="button" data-panel="sort" id="demo-sort-button">Sort ⌄</button></div>
+            <div class="demo-context"><span id="demo-count" aria-live="polite">Illustrative films</span><button type="button" data-action="reset">Reset ↺</button>
+              <select id="demo-group" aria-label="Group films"><option value="all">All films</option><option value="place">Group by place</option><option value="time">Group by time</option></select></div>
+            <div class="demo-results" id="demo-results" aria-live="polite"></div>
+            <div id="demo-overlay" class="demo-overlay" hidden></div>
+          </div><div class="demo-home-indicator" aria-hidden="true"></div>
         </div>
-        <div class="map-orbit"></div>
-        <div class="mock-meta">Free to use · No account required</div>
+        <aside class="demo-guide"><span class="eyebrow">Explore the experience</span><h3>One catalog.<br/>Many ways in.</h3>
+        <p>Switch between List and Map, open a movie, save it, or explore Where and When independently.</p>
+        <div class="demo-guide-rule"></div><p>Have a missing time or place? The iOS app accepts suggestions for review, including films not yet in the catalog.</p>
+        <a href="mailto:Stelyra-Astro@proton.me" class="button">Contact the developer</a></aside>
       </div>
     </section>
 
@@ -47,7 +75,7 @@
       <div class="grid-3">
         <article class="card"><h3>Explore by place</h3><p>Discover films connected to countries, regions, cities, and story locations.</p></article>
         <article class="card"><h3>Explore by time</h3><p>Move through historical periods and compare stories set in different eras.</p></article>
-        <article class="card"><h3>Keep your settings local</h3><p>No account is required. Optional tips support the app but do not unlock features.</p></article>
+        <article class="card"><h3>Contribute story details</h3><p>Suggest missing or corrected film times and places. Submissions are reviewed before entering the catalog.</p></article>
       </div>
     </section>
 
@@ -66,5 +94,6 @@
     <div>© 2026 ReelSpan. All rights reserved.</div>
     <div><a href="mailto:Stelyra-Astro@proton.me">Stelyra-Astro@proton.me</a></div>
   </footer>
+  <script defer src="./demo.js"></script>
 </body>
 </html>

@@ -6,6 +6,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CDCDCDCDCDCDCDCDCDCD0005 /* FilmGroupRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCDCDCDCDCDCDCDCDCD0006 /* FilmGroupRules.swift */; };
+		CDCDCDCDCDCDCDCDCDCD0003 /* ContributionHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCDCDCDCDCDCDCDCDCD0004 /* ContributionHubView.swift */; };
+		CDCDCDCDCDCDCDCDCDCD0001 /* ContributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCDCDCDCDCDCDCDCDCD0002 /* ContributionService.swift */; };
 		AC0100000000000000000001 /* SearchAndTip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0100000000000000000002 /* SearchAndTip.swift */; };
 		A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A110A110A110A110A110A110 /* MovieMetadataService.swift */; };
 		A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A112A112A112A112A112A112 /* MovieMetadataStore.swift */; };
@@ -52,6 +55,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CDCDCDCDCDCDCDCDCDCD0006 /* FilmGroupRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FilmGroupRules.swift; path = "ReelAtlas/Core/FilmGroupRules.swift"; sourceTree = SOURCE_ROOT; };
+		CDCDCDCDCDCDCDCDCDCD0004 /* ContributionHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContributionHubView.swift; path = "ReelAtlas/Features/Contribution/ContributionHubView.swift"; sourceTree = SOURCE_ROOT; };
+		CDCDCDCDCDCDCDCDCDCD0002 /* ContributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContributionService.swift; path = "ReelAtlas/Data/ContributionService.swift"; sourceTree = SOURCE_ROOT; };
 		AC0100000000000000000002 /* SearchAndTip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SearchAndTip.swift; path = "ReelAtlas/Core/SearchAndTip.swift"; sourceTree = SOURCE_ROOT; };
 		AC0100000000000000000003 /* Tips.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Tips.storekit; path = "ReelAtlas/Resources/Tips.storekit"; sourceTree = SOURCE_ROOT; };
 		A110A110A110A110A110A110 /* MovieMetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MovieMetadataService.swift; path = "ReelAtlas/Core/MovieMetadataService.swift"; sourceTree = SOURCE_ROOT; };
@@ -107,6 +113,9 @@
 		2EB2D8158FC6EF9EB19CB439 = {isa = PBXGroup; children = (2568F4DEBB06535449829F17 /* Sources */, 567F2FDE2E8D3E9A09D6C13B /* Resources */, 1E78B559816E575FC0BDB29C /* Products */); sourceTree = "<group>"; };
 		2568F4DEBB06535449829F17 /* Sources */ = {isa = PBXGroup; children = (
 			AC0100000000000000000002 /* SearchAndTip.swift */,
+			CDCDCDCDCDCDCDCDCDCD0006 /* FilmGroupRules.swift */,
+			CDCDCDCDCDCDCDCDCDCD0004 /* ContributionHubView.swift */,
+			CDCDCDCDCDCDCDCDCDCD0002 /* ContributionService.swift */,
 			A110A110A110A110A110A110 /* MovieMetadataService.swift */,
 			A112A112A112A112A112A112 /* MovieMetadataStore.swift */,
 			A102A102A102A102A102A102 /* MovieMetadataModels.swift */,
@@ -178,6 +187,9 @@
 /* Begin PBXSourcesBuildPhase section */
 		B0193229F5D633567D732C36 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 			AC0100000000000000000001 /* SearchAndTip.swift in Sources */,
+				CDCDCDCDCDCDCDCDCDCD0005 /* FilmGroupRules.swift in Sources */,
+				CDCDCDCDCDCDCDCDCDCD0003 /* ContributionHubView.swift in Sources */,
+				CDCDCDCDCDCDCDCDCDCD0001 /* ContributionService.swift in Sources */,
 			A109A109A109A109A109A109 /* MovieMetadataService.swift in Sources */,
 			A111A111A111A111A111A111 /* MovieMetadataStore.swift in Sources */,
 			A101A101A101A101A101A101 /* MovieMetadataModels.swift in Sources */,
