@@ -49,6 +49,10 @@ CREATE TABLE movies (
   overview_license TEXT NOT NULL DEFAULT ''
 );
 
+-- Old story caches store only a TMDB ID plus a Wikidata QID. The upgrade's
+-- offline metadata join must not scan the entire 50k-film table per candidate.
+CREATE INDEX IF NOT EXISTS idx_movies_tmdb_movie_id ON movies(tmdb_movie_id);
+
 CREATE TABLE movie_target_matches (
   movie_qid TEXT NOT NULL REFERENCES movies(movie_qid) ON DELETE CASCADE,
   target_qid TEXT NOT NULL REFERENCES targets(target_qid) ON DELETE CASCADE,
@@ -154,6 +158,7 @@ CREATE UNIQUE INDEX idx_movie_locations_global_unique
   ON movie_locations(movie_qid, raw_place_qid)
   WHERE source_target_qid IS NULL;
 CREATE INDEX idx_movie_periods_years ON movie_periods(start_year, end_year, movie_qid);
+CREATE INDEX IF NOT EXISTS idx_movie_periods_movie ON movie_periods(movie_qid, start_year, end_year);
 CREATE INDEX idx_normalization_issues_movie ON normalization_issues(movie_qid, raw_place_qid);
 CREATE UNIQUE INDEX idx_normalization_issues_unique
   ON normalization_issues(

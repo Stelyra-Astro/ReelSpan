@@ -95,10 +95,24 @@ actor CatalogDiscoveryService {
     private var hasLoadedPageCache = false
     private var offlineUntil = Date.distantPast
 
+    func resetRetryCooldown() {
+        offlineUntil = .distantPast
+    }
+
     private func pageCacheURL() throws -> URL {
-        let directory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
-                                                    appropriateFor: nil, create: true)
+        // Caches/ can be evicted by iOS. A last-known-good browse snapshot is
+        // application data and must survive an offline launch and app upgrade.
+        let directory = try FileManager.default.url(for: .applicationSupportDirectory,
+                                                    in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("ReelAtlas", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("reelspan-discovery-pages-v1.json")
+    }
+
+    private func legacyPageCacheURL() throws -> URL {
+        try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                    appropriateFor: nil, create: true)
+            .appendingPathComponent("reelspan-discovery-pages-v1.json")
     }
 
     private func cacheKey(_ request: Request, language: String) throws -> String {
@@ -113,9 +127,19 @@ actor CatalogDiscoveryService {
     private func readCachedPage(key: String) -> CachedPage? {
         if !hasLoadedPageCache {
             hasLoadedPageCache = true
-            if let url = try? pageCacheURL(), let data = try? Data(contentsOf: url),
-               let pages = try? JSONDecoder().decode([CachedPage].self, from: data) {
-                pageCache = Dictionary(pages.map { ($0.key, $0) }, uniquingKeysWith: { newest, _ in newest })
+            let urls = [try? pageCacheURL(), try? legacyPageCacheURL()].compactMap { $0 }
+            for url in urls {
+                if let data = try? Data(contentsOf: url),
+                   let pages = try? JSONDecoder().decode([CachedPage].self, from: data) {
+                    for page in pages where pageCache[page.key] == nil {
+                        pageCache[page.key] = page
+                    }
+                }
+            }
+            // Migrate the old Caches/ snapshot without deleting the source.
+            if let url = try? pageCacheURL(), !pageCache.isEmpty,
+               let data = try? JSONEncoder().encode(Array(pageCache.values)) {
+                try? data.write(to: url, options: .atomic)
             }
         }
         return pageCache[key]
@@ -124,18 +148,26 @@ actor CatalogDiscoveryService {
     private func writeCachedPage(key: String, rows: [Film]) {
         _ = readCachedPage(key: key)
         pageCache[key] = CachedPage(key: key, rows: rows, savedAt: Date())
-        // Bounded disk usage; only previously viewed pages are kept offline.
-        let recent = Array(pageCache.values.sorted { $0.savedAt > $1.savedAt }.prefix(60))
-        pageCache = Dictionary(recent.map { ($0.key, $0) }, uniquingKeysWith: { newest, _ in newest })
-        if let url = try? pageCacheURL(), let data = try? JSONEncoder().encode(recent) {
+        // Every viewed page is an offline snapshot. Do not expire it or drop older
+        // filters/pages merely because the user browses elsewhere.
+        if let url = try? pageCacheURL(),
+           let data = try? JSONEncoder().encode(Array(pageCache.values)) {
             try? data.write(to: url, options: .atomic)
         }
     }
 
     private func whereCacheURL() throws -> URL {
-        let directory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
-                                                    appropriateFor: nil, create: true)
+        let directory = try FileManager.default.url(for: .applicationSupportDirectory,
+                                                    in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("ReelAtlas", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("reelspan-where-catalog-v1.json")
+    }
+
+    private func legacyWhereCacheURL() throws -> URL {
+        try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                    appropriateFor: nil, create: true)
+            .appendingPathComponent("reelspan-where-catalog-v1.json")
     }
 
     private func present(_ rows: [WhereCatalogRow], language: String) -> [ModernWherePlace] {
@@ -149,9 +181,17 @@ actor CatalogDiscoveryService {
 
     /// Return on-device choices immediately. The caller may separately refresh the revision.
     func cachedWhereCatalog(language: String) -> [ModernWherePlace] {
-        if whereSnapshot == nil, let url = try? whereCacheURL(),
-           let data = try? Data(contentsOf: url) {
-            whereSnapshot = try? JSONDecoder().decode(WhereSnapshot.self, from: data)
+        if whereSnapshot == nil {
+            let durable = try? whereCacheURL()
+            let urls = [durable, try? legacyWhereCacheURL()].compactMap { $0 }
+            for url in urls {
+                guard let data = try? Data(contentsOf: url),
+                      let snapshot = try? JSONDecoder().decode(WhereSnapshot.self, from: data) else { continue }
+                whereSnapshot = snapshot
+                // Upgrade legacy Caches/ data without discarding its original file.
+                if url != durable, let durable { try? data.write(to: durable, options: .atomic) }
+                break
+            }
         }
         return present(whereSnapshot?.places ?? [], language: language)
     }
@@ -209,13 +249,25 @@ actor CatalogDiscoveryService {
     private let baseURL = URL(string: "https://injisguyqfxfwgnbtghe.supabase.co/rest/v1")!
     private let publishableKey = "sb_publishable_OEEsH_hGwuWAsLoh95SiXw_mbj3D6i2"
 
-    func page(_ parameters: Request, language: String) async throws -> Page {
+    /// Cache-first by default: a slow RPC must never delay an exact disk hit.
+    /// The caller requests a fresh copy separately after showing cached rows.
+    func cachedPage(_ parameters: Request, language: String) throws -> Page? {
+        let key = try cacheKey(parameters, language: language)
+        guard let saved = readCachedPage(key: key) else { return nil }
+        let maxRows = min(max(parameters.limit, 1), 49)
+        return Page(movies: saved.rows.prefix(maxRows).map { Self.movieData($0, language: language) },
+                    hasMore: saved.rows.count > maxRows, isStale: true)
+    }
+
+    func page(_ parameters: Request, language: String, refresh: Bool = false) async throws -> Page {
         let maxRows = min(max(parameters.limit, 1), 49)
         let key = try cacheKey(parameters, language: language)
+        if !refresh, let saved = try cachedPage(parameters, language: language) { return saved }
         if Date() < offlineUntil, let saved = readCachedPage(key: key) {
             return Page(movies: saved.rows.prefix(maxRows).map { Self.movieData($0, language: language) },
                         hasMore: saved.rows.count > maxRows, isStale: true)
         }
+        if Date() < offlineUntil { throw SQLiteError.step("Catalog refresh is cooling down") }
         let payload: [String: Any] = [
             "p_query": parameters.query,
             "p_start_year": parameters.startYear as Any? ?? NSNull(),
@@ -331,7 +383,9 @@ actor CatalogDiscoveryService {
                     let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? String ?? "unknown"
                     NSLog("[ReelSpan] Catalog HTTP %ld PostgREST=%@ path=%@", http.statusCode, code,
                           request.url?.path ?? "unknown")
-                    if attempt < 2 && [408, 429, 500, 502, 503, 504].contains(http.statusCode) {
+                    // Postgres statement_timeout (57014) will not recover from
+                    // three immediate retries of the identical heavy query.
+                    if attempt < 2 && code != "57014" && [408, 429, 500, 502, 503, 504].contains(http.statusCode) {
                         try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
                         continue
                     }

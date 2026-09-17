@@ -40,6 +40,35 @@ actor FixtureCatalog {
         tables["story_movie_target_matches"] = [["movie_qid":"Q4","target_qid":"Q9","target_kind":"country",
             "matched_raw_location_count":1,"matched_raw_place_qids":[],"best_confidence":1.0]]
     }
+    func seedUnrelatedFirstBatchParents() {
+        func target(_ id: Int) -> [String: Any] {
+            ["target_qid":"T\(id)","target_kind":"country","name_en":"Target \(id)",
+             "name_zh":"Target \(id)","labels":[:],"admin1_qid":NSNull(),
+             "admin1_name_en":NSNull(),"country_qid":"T\(id)",
+             "country_name_en":"Target \(id)","film_count":1,"candidate_count":1]
+        }
+        func place(_ id: Int) -> [String: Any] {
+            ["place_qid":"P\(id)","name_en":"Place \(id)","name_zh":"Place \(id)",
+             "labels":[:],"type_qids":[],"p131_qids":[],"location_qids":[],
+             "country_qids":[],"present_day_qids":[],"replaced_by_qids":[],
+             "followed_by_qids":[],"coordinate":"POINT(0 0)","dissolved_date":NSNull()]
+        }
+        tables["story_targets"] = (1...120).map(target)
+        tables["story_places"] = (1...120).map(place)
+        tables["story_movie_target_matches"] = [[
+            "movie_qid":"Q1","target_qid":"T1","target_kind":"country",
+            "matched_raw_location_count":1,"matched_raw_place_qids":["P1"],"best_confidence":1.0]]
+        tables["story_movie_locations"] = [[
+            "id":1,"source_target_qid":"T1","movie_qid":"Q1","is_target_match":true,
+            "raw_place_qid":"P1","raw_place_name_en":"Place 1","raw_place_name_zh":"Place 1",
+            "raw_place_labels":[:],"historical_capital_qid":NSNull(),
+            "historical_capital_name_en":NSNull(),"modern_place_qid":NSNull(),
+            "modern_place_name_en":NSNull(),"city_qid":NSNull(),"city_name_en":NSNull(),
+            "city_name_zh":NSNull(),"admin1_qid":NSNull(),"admin1_name_en":NSNull(),
+            "admin1_name_zh":NSNull(),"country_qid":NSNull(),"country_name_en":NSNull(),
+            "country_name_zh":NSNull(),"normalization_method":"test","normalization_path":NSNull(),
+            "confidence":1.0,"status":"valid","notes":NSNull()]]
+    }
     func respond(_ request: URLRequest) throws -> Data {
         let url = request.url!
         let name = url.lastPathComponent
@@ -120,6 +149,17 @@ actor FixtureCatalog {
         try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
         defer { try? FileManager.default.removeItem(at:directory) }
         let url = directory.appendingPathComponent("cache.sqlite")
+        let earlyRemote = FixtureCatalog()
+        await earlyRemote.seedUnrelatedFirstBatchParents()
+        let earlyURL = directory.appendingPathComponent("first-batch.sqlite")
+        let earlyService = StoryContentSyncService(databaseURL:earlyURL, schemaSQL:schema,
+            transport:{ request in try await earlyRemote.respond(request) })
+        _ = try await earlyService.ensureCurrentContent()
+        check(try scalar(earlyURL,"SELECT count(*) FROM movies") == "2", "early batch published")
+        check(try scalar(earlyURL,"SELECT count(*) FROM places") == "1", "only referenced places stored before publish")
+        check(try scalar(earlyURL,"SELECT count(*) FROM targets") == "1", "only referenced targets stored before publish")
+        let firstBatchReads = await earlyRemote.bodyRows
+        check(firstBatchReads <= 12, "initial movie batch should not download every unrelated parent: \(firstBatchReads)")
         let remote = FixtureCatalog()
         func service() -> StoryContentSyncService {
             StoryContentSyncService(databaseURL:url,schemaSQL:schema,transport:{ request in try await remote.respond(request) })

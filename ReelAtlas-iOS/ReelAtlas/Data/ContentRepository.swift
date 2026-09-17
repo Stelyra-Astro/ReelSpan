@@ -270,6 +270,17 @@ final class ContentRepository {
         .compactMap { movie(id: $0, preferredLanguage: preferredLanguage) }
     }
 
+    /// Match a cached TMDB detail against the *current* local story filters.
+    /// Never substitute an unrelated discovery page for a changed Where/When.
+    func cachedMovie(tmdbID: Int, startYear: Int, endYear: Int,
+                     scope: MovieLocationScope?, preferredLanguage: String) -> MovieViewData? {
+        let ids = movieIDs(startYear: startYear, endYear: endYear, scope: scope,
+                           favoritesOnly: false, favoriteIDs: [], limit: 1, offset: 0,
+                           tmdbID: tmdbID)
+        guard let id = ids.first else { return nil }
+        return movie(id: id, preferredLanguage: preferredLanguage)
+    }
+
     func searchPage(
         startYear: Int,
         endYear: Int,
@@ -408,7 +419,8 @@ final class ContentRepository {
         favoritesOnly: Bool,
         favoriteIDs: Set<Int>,
         limit: Int,
-        offset: Int
+        offset: Int,
+        tmdbID: Int? = nil
     ) -> [Int] {
         if favoritesOnly && favoriteIDs.isEmpty { return [] }
         let orderedFavorites = favoriteIDs.sorted()
@@ -461,6 +473,7 @@ final class ContentRepository {
             ))
         ) AND \(locationClause)
         \(favoriteClause)
+        \(tmdbID == nil ? "" : "AND m.tmdb_movie_id=?")
         ORDER BY m.id
         LIMIT ? OFFSET ?
         """
@@ -470,6 +483,7 @@ final class ContentRepository {
         ]
         bindings.append(contentsOf: locationBindings)
         if favoritesOnly { bindings.append(contentsOf: orderedFavorites.map(SQLiteBindValue.int)) }
+        if let tmdbID { bindings.append(.int(tmdbID)) }
         bindings.append(.int(limit))
         bindings.append(.int(offset))
         guard let statement = try? db.prepare(

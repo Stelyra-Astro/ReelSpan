@@ -110,6 +110,23 @@ public actor MovieMetadataService {
         return try Self.decode(data)
     }
 
+    /// Read an upgrade user's existing metadata without waiting for Supabase or
+    /// the TMDB proxy. Expired entries remain valid as last-known-good data.
+    public func cachedMetadata(limit: Int = 400) -> [MovieMetadata] {
+        cache.cachedMetadataIDs(limit: limit).compactMap { try? cache.readMetadata(tmdbID: $0, allowExpired: true) }
+    }
+
+    /// Listing filenames does not decode the entire offline catalog. It never
+    /// expires entries, including files saved by versions before page caching.
+    public func cachedMetadataIDs(limit: Int = .max) -> [Int] {
+        cache.cachedMetadataIDs(limit: limit)
+    }
+
+    /// Read only films that actually match the current on-device story filters.
+    public func cachedMetadata(tmdbIDs: [Int]) -> [MovieMetadata] {
+        tmdbIDs.compactMap { try? cache.readMetadata(tmdbID: $0, allowExpired: true) }
+    }
+
     public func imageData(url: URL) async throws -> Data {
         try Task.checkCancellation()
         if let data = cache.cachedImage(for: url) { return data }

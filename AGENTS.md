@@ -2,7 +2,7 @@
 
 ## Build 编号
 
-- 2026-09-17 已成功上传版本 1.0 (12)，下一次新发布归档从 Build 13 开始；此记录为历史基线，发布前核对 App Store Connect 最新编号，避免重复。
+- 2026-09-17 Build 12 是已上传历史基线；本次缓存修复已归档 1.0 (13)，上传待执行。Build 13 已保留，下一次新发布归档从 Build 14 开始；发布前核对 App Store Connect 最新编号，避免重复。
 - 不要照搬旧 ZIP 中的 CURRENT_PROJECT_VERSION（本次 ZIP 原值为 10）。核对 Debug、Release 设置及最终 Archive/IPA 的 CFBundleVersion。
 - 导出设置使用 `manageAppVersionAndBuildNumber=false`，保留明确指定的编号。
 - 新编号使用后同步更新本文件与 BUILD_NUMBER.md。
@@ -52,5 +52,7 @@ UploadOptions.plist 使用：`method=app-store-connect`、`destination=upload`�
 - Build 12 于 2026-09-17 09:39:58 上传成功，当时日志显示 `Uploaded package is processing`，没有提交审核。后续状态须重新查询。
 - Build 12 的 silent-refresh-map 源码与测试现已合并到根项目 `ReelAtlas-iOS/`。首次发布时使用的独立副本仍保留在本机 `Artifacts/silent-refresh-validation/ReelSpan-main/`，不提交编译产物。
 - Build 12 存在已知的启动缓存策略和线上发现 RPC 超时问题，尚未修复；不要将本次合并解释为修复。根因与待验证场景见 `docs/diagnostics/2026-09-17-build12-cache-startup.md`。
+- 上一条是 Build 12 历史状态。Build 13 包含缓存优先加载、部分离线回退、首批数据显示、手动重试、分页恢复和地图/计数修复；客户端自动测试通过，但真机升级/断网 UI 验收仍待进行。
+- Supabase 优化尚未全部完成，高频宽文本匹配仍存在超时风险。已部署到 `discover_field_rank_indexes`（远端版本 `20260917035304`）；分块搜索方案因生产写锁/回填风险被安全审核拦截，用户暂停后续部署。`docs/supabase/drafts/` 不得当作已部署迁移或自动执行。详细状态见 `docs/diagnostics/2026-09-17-supabase-search-status.md`。
 
 已提交的完整回查：`docs/releases/BUILD5_UPLOAD_TRACE.md`。本机证据：`Artifacts/silent-refresh-validation/VALIDATION.md`、`upload-build-12-api.log`（不提交产物和原始日志）。若本机证据缺失，不要宣称重新核验过上传。

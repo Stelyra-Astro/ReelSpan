@@ -61,6 +61,11 @@ public enum TipRules {
 public enum MoviePaginationPolicy {
     public static let searchSuggestionLimit = 10
     public static let resultPageSize = 15
+
+    public static func hasMoreAfterFirstPageRefresh(loadedCount: Int, pageSize: Int,
+                                                   currentHasMore: Bool, refreshedHasMore: Bool) -> Bool {
+        loadedCount > pageSize ? currentHasMore : refreshedHasMore
+    }
 }
 
 public enum TipState: Equatable, Sendable {

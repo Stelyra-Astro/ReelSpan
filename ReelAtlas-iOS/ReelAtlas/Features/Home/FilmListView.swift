@@ -1,5 +1,18 @@
 import SwiftUI
 
+struct FilmRetryButton: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Button("Retry") {
+            Task { await model.retryUnavailableFilms() }
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Color(red: 0.11, green: 0.20, blue: 0.28))
+        .disabled(model.isLoadingMovies || model.isContentLoading || model.isRetryingFilms)
+    }
+}
+
 /// Native adaptation of the list-mode HTML prototype. All rows come from the live catalog.
 struct FilmListView: View {
     var showsMap = false
@@ -34,11 +47,18 @@ struct FilmListView: View {
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if model.showingOfflineSamples {
+                            Text("Showing saved films · Live catalog updating")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 8)
+                        }
                         if grouping == "all" {
                             ForEach(model.movies) { movie in filmRow(movie) }
                         } else if grouping == "place" {
-                            if model.whereCatalog.isEmpty || (model.movieCountryQIDs.isEmpty && !model.movies.isEmpty) {
-                                ProgressView("Grouping story countries…").padding(24)
+                            if model.whereCatalog.isEmpty || model.movies.contains(where: { model.movieCountryQIDs[$0.movieQID] == nil }) {
+                                Text("Grouping is unavailable offline. Showing saved films.")
+                                    .font(.caption).foregroundStyle(.secondary).padding(12)
+                                ForEach(model.movies) { movie in filmRow(movie) }
                             } else {
                                 ForEach(continentGroups) { continent in
                                     HStack {
@@ -64,12 +84,17 @@ struct FilmListView: View {
                         } else if model.hasMoreMovies {
                             Color.clear.frame(height: 32).onAppear { model.loadMoreMovies() }
                         } else if model.movies.isEmpty && !model.isContentLoading {
+                            VStack(spacing: 12) {
                             ContentUnavailableView(model.catalogSearchError == nil ? "No matching films" : "Films unavailable for now",
                                                    systemImage: "film.stack",
                                                    description: Text(model.catalogSearchError == nil
                                                        ? "Try another place, time, or search term."
                                                        : "Films will appear when this view can load."))
-                                .padding(.top, 65)
+                            if model.catalogSearchError != nil {
+                                FilmRetryButton()
+                            }
+                            }
+                            .padding(.top, 65)
                         }
                     }
                     .padding(.horizontal, 11)
@@ -136,8 +161,8 @@ struct FilmListView: View {
                 headerIcon("gearshape") { showSettings = true }
             }
             HStack(spacing: 2) {
-                modeButton("List", symbol: "list.bullet", selected: !showsMap) { model.setListMode(true) }
                 modeButton("Map", symbol: "map", selected: showsMap) { model.setListMode(false) }
+                modeButton("List", symbol: "list.bullet", selected: !showsMap) { model.setListMode(true) }
             }
             .padding(3).background(pale, in: RoundedRectangle(cornerRadius: 12))
             HStack(spacing: 8) {
@@ -179,7 +204,7 @@ struct FilmListView: View {
                 } label: { filterLabel("Sort", symbol: "arrow.up.arrow.down", active: model.selectedSort != "recommended") }
             }
             HStack(spacing: 6) {
-                Text("\(model.syncTotal > 0 ? model.syncTotal : model.movies.count) films in the atlas")
+                Text("\(max(model.syncDownloaded, model.syncTotal) > 0 ? max(model.syncDownloaded, model.syncTotal) : model.movies.count) films in the atlas")
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Menu {

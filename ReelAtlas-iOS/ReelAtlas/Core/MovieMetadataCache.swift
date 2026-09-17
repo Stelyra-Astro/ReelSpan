@@ -25,7 +25,9 @@ public final class MovieMetadataCache {
     public func readMetadata(tmdbID: Int, allowExpired: Bool = false) throws -> MovieMetadata? {
         try withLock {
             let url = metadataURL(tmdbID: tmdbID)
-            guard let data = try readData(at: url, allowExpired: allowExpired) else { return nil }
+            // TMDB metadata already downloaded is part of the persistent offline atlas.
+            // The legacy allowExpired argument stays for source compatibility.
+            guard let data = try readData(at: url, allowExpired: true) else { return nil }
             do {
                 let metadata = try JSONDecoder().decode(MovieMetadata.self, from: data)
                 try refreshAccessDate(for: url)
@@ -34,6 +36,26 @@ public final class MovieMetadataCache {
                 // Preserve older-format bytes until a successful refresh/migration replaces them.
                 return nil
             }
+        }
+    }
+
+    /// The previous releases already have these individual metadata files, but
+    /// no discovery-page snapshot. Enumerate only local files; never fetch here.
+    public func cachedMetadataIDs(limit: Int = 400) -> [Int] {
+        withLock {
+            guard let urls = try? fileManager.contentsOfDirectory(
+                at: root, includingPropertiesForKeys: [.contentAccessDateKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]) else { return [] }
+            return urls.compactMap { url -> (Int, Date)? in
+                let name = url.lastPathComponent
+                guard name.hasPrefix("movie-en-US-"), name.hasSuffix(".json"),
+                      let id = Int(name.dropFirst("movie-en-US-".count).dropLast(5)), id > 0 else { return nil }
+                let values = try? url.resourceValues(forKeys: [.contentAccessDateKey, .contentModificationDateKey])
+                return (id, values?.contentAccessDate ?? values?.contentModificationDate ?? .distantPast)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(max(0, limit))
+            .map(\.0)
         }
     }
 
@@ -123,7 +145,7 @@ public final class MovieMetadataCache {
     private func readData(at url: URL, allowExpired: Bool = false) throws -> Data? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         // Expiration requests a refresh; it does not delete the last offline copy.
-        guard allowExpired || !isExpired(url) else { return nil }
+        guard allowExpired || url.lastPathComponent.hasPrefix("movie-en-US-") || !isExpired(url) else { return nil }
         return try Data(contentsOf: url)
     }
 
@@ -148,6 +170,9 @@ public final class MovieMetadataCache {
             let values = try url.resourceValues(forKeys: keys)
             guard values.isRegularFile == true, let size = values.fileSize else { continue }
 
+            // Metadata JSON is never subject to the image/raw response budget.
+            // Its bytes must remain available after offline launches and upgrades.
+            guard !url.lastPathComponent.hasPrefix("movie-en-US-") else { continue }
             let bytes = Int64(size)
             let modificationDate = values.contentModificationDate ?? .distantPast
             let accessDate = values.contentAccessDate ?? modificationDate
@@ -158,7 +183,7 @@ public final class MovieMetadataCache {
         for file in files.sorted(by: {
             if $0.accessDate != $1.accessDate { return $0.accessDate < $1.accessDate }
             return $0.modificationDate < $1.modificationDate
-        }) where total > maximumBytes {
+        }) where !file.url.lastPathComponent.hasPrefix("movie-en-US-") && total > maximumBytes {
             try fileManager.removeItem(at: file.url)
             total -= file.bytes
         }

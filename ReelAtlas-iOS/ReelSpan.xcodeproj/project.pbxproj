@@ -6,6 +6,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        A173C0000000000000000001 /* LocalFilmCountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A173C0000000000000000002 /* LocalFilmCountStore.swift */; };
         A716C0DE0000000000000003 /* ContributionDuplicatePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A716C0DE0000000000000004 /* ContributionDuplicatePolicy.swift */; };
         A716C0DE0000000000000001 /* CatalogSyncSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = A716C0DE0000000000000002 /* CatalogSyncSchema.swift */; };
 		CDCDCDCDCDCDCDCDCDCD0005 /* FilmGroupRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCDCDCDCDCDCDCDCDCD0006 /* FilmGroupRules.swift */; };
@@ -57,6 +58,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        A173C0000000000000000002 /* LocalFilmCountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocalFilmCountStore.swift; path = "ReelAtlas/Data/LocalFilmCountStore.swift"; sourceTree = SOURCE_ROOT; };
         A716C0DE0000000000000004 /* ContributionDuplicatePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContributionDuplicatePolicy.swift; path = "ReelAtlas/Core/ContributionDuplicatePolicy.swift"; sourceTree = SOURCE_ROOT; };
         A716C0DE0000000000000002 /* CatalogSyncSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CatalogSyncSchema.swift; path = "ReelAtlas/Data/CatalogSyncSchema.swift"; sourceTree = SOURCE_ROOT; };
 		CDCDCDCDCDCDCDCDCDCD0006 /* FilmGroupRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FilmGroupRules.swift; path = "ReelAtlas/Core/FilmGroupRules.swift"; sourceTree = SOURCE_ROOT; };
@@ -143,6 +145,7 @@
 			D022A7D022A7D022A7D022A7 /* RegionalCapitalResolver.swift */,
 			6E0D1D2A4DA00DD02016B6DB /* AppModels.swift */,
 			0516E96CD5535D01BCFE3B04 /* ContentRepository.swift */,
+            A173C0000000000000000002 /* LocalFilmCountStore.swift */,
 			A715C0DE0000000000000002 /* StoryContentSyncService.swift */,
 			A715C0DE0000000000000004 /* CatalogDiscoveryService.swift */,
 			DA8CE6E9DED9CF76F01CB8FE /* SQLiteSupport.swift */,
@@ -219,6 +222,7 @@
 			C022A7C022A7C022A7C022A7 /* RegionalCapitalResolver.swift in Sources */,
 			546A149725638EAE0FD29399 /* AppModels.swift in Sources */,
 			C7374887F0423BFB9474AB50 /* ContentRepository.swift in Sources */,
+            A173C0000000000000000001 /* LocalFilmCountStore.swift in Sources */,
 			A715C0DE0000000000000001 /* StoryContentSyncService.swift in Sources */,
 			A715C0DE0000000000000003 /* CatalogDiscoveryService.swift in Sources */,
 			7BDBE1CDFD06A2C50B4BE534 /* SQLiteSupport.swift in Sources */,
@@ -240,8 +244,8 @@
 /* Begin XCBuildConfiguration section */
 		BFD315016DE16320F7E2120C /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; ONLY_ACTIVE_ARCH = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
 		1D8C0C6B1D22EA8C7669B263 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; SWIFT_VERSION = 5.0; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
-		75BB3D5A44EA88B6630AB580 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 12; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
-		78E9FF212122B0C0397A6DB4 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 12; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+75BB3D5A44EA88B6630AB580 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 13; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; }; name = Debug; };
+		78E9FF212122B0C0397A6DB4 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = ReelAtlas/ReelSpan.entitlements; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 13; DEVELOPMENT_TEAM = KCC8FFFAA5; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = ReelAtlas/Resources/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks"; MARKETING_VERSION = 1.0; OTHER_LDFLAGS = "$(inherited) -lsqlite3"; PRODUCT_BUNDLE_IDENTIFIER = com.xiaoguiwk.ReelSpan; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */

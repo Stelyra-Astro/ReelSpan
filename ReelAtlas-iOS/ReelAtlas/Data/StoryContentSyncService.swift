@@ -84,6 +84,8 @@ actor StoryContentSyncService {
                   name_zh TEXT NOT NULL, labels_json TEXT NOT NULL CHECK(json_valid(labels_json)),
                   start_year INTEGER, end_year INTEGER);
                 CREATE INDEX IF NOT EXISTS idx_time_concepts_category ON time_concepts(category,name_en);
+                CREATE INDEX IF NOT EXISTS idx_movies_tmdb_movie_id ON movies(tmdb_movie_id);
+                CREATE INDEX IF NOT EXISTS idx_movie_periods_movie ON movie_periods(movie_qid, start_year, end_year);
                 """)
             // Legacy matched-film caches can join the full catalog by adding only missing rows.
             if priorFormat != "supabase-story-content-full-v2" {
@@ -248,14 +250,16 @@ actor StoryContentSyncService {
 
     private func upsert(_ table: CatalogSyncSchema.Table, row: [String: Any], db: SQLiteDatabase) throws {
         let columns = table.fields.map(\.local)
-        var bindings: [SQLiteBindValue] = try table.fields.map { field in
+        // Swift 6 actor isolation: do not capture a non-Sendable JSON row in map's closure.
+        var bindings: [SQLiteBindValue] = []
+        for field in table.fields {
             let value = row[field.remote]
             switch field.kind {
-            case .text: return optionalText(value)
-            case .int: return optionalInt(value)
-            case .double: return value == nil || value is NSNull ? .null : .double(requiredDouble(row, field.remote))
-            case .bool: return optionalBool(value)
-            case .json: return .text(try jsonString(value))
+            case .text: bindings.append(optionalText(value))
+            case .int: bindings.append(optionalInt(value))
+            case .double: bindings.append(value == nil || value is NSNull ? .null : .double(requiredDouble(row, field.remote)))
+            case .bool: bindings.append(optionalBool(value))
+            case .json: bindings.append(.text(try jsonString(value)))
             }
         }
         var insertColumns = columns
@@ -299,34 +303,49 @@ actor StoryContentSyncService {
         return result
     }
 
+    /// First install: publish just the first movies and their referenced parents.
+    /// Large place/target/concept tables are reconciled after the UI is usable.
     private func rebuildFirstBatch(destination: URL, manifest: Manifest) async throws {
         let schema = try cacheSchema()
         let replacement = destination.deletingLastPathComponent().appendingPathComponent("content-replacement.sqlite")
         try? FileManager.default.removeItem(at: replacement)
         do {
-            // Keep replacement private until the complete first batch is committed.
+            let first = try await fetchMovieBatch(after: 0)
+            guard !first.isEmpty else { throw SQLiteError.open("Published catalog has no films") }
+            let qids = first.compactMap { $0["movie_qid"] as? String }
+            let movieFilter = [URLQueryItem(name: "movie_qid", value: "in.(\(qids.joined(separator: ",")))")]
+            let locations = try await rows(table: "story_movie_locations", filters: movieFilter)
+            let matches = try await rows(table: "story_movie_target_matches", filters: movieFilter)
+            let targetQIDs = Set(locations.compactMap { $0["source_target_qid"] as? String }
+                                 + matches.compactMap { $0["target_qid"] as? String })
+            let placeFields = ["raw_place_qid", "historical_capital_qid", "modern_place_qid",
+                               "city_qid", "admin1_qid", "country_qid"]
+            let placeQIDs = Set(locations.flatMap { location in
+                placeFields.compactMap { location[$0] as? String }
+            })
+            let targets = try await requiredParentRows(table: "story_targets", key: "target_qid", ids: targetQIDs)
+            let places = try await requiredParentRows(table: "story_places", key: "place_qid", ids: placeQIDs)
             do {
                 let db = try SQLiteDatabase(url: replacement, readOnly: false)
                 try db.execute(schema)
                 try db.execute("BEGIN IMMEDIATE")
                 do {
-                    try await importTargets(db)
-                    try await importPlaces(db)
-                    try await importTimeConcepts(db)
+                    let targetTable = CatalogSyncSchema.tables.first { $0.local == "targets" }!
+                    let placeTable = CatalogSyncSchema.tables.first { $0.local == "places" }!
+                    for row in targets { try upsert(targetTable, row: row, db: db) }
+                    for row in places { try upsert(placeTable, row: row, db: db) }
                     try db.execute("COMMIT")
                 } catch {
                     try? db.execute("ROLLBACK")
                     throw error
                 }
             }
-            let first = try await fetchMovieBatch(after: 0)
-            guard !first.isEmpty else { throw SQLiteError.open("Published catalog has no films") }
             let cursor = (first.last?["legacy_id"] as? NSNumber)?.intValue ?? 0
             try await importBatch(at: replacement, movies: first, cursor: cursor,
                                   total: manifest.rowCounts["story_movies"] ?? 0,
                                   target: manifest.sourceVersion + ":" + formatVersion,
-                                  version: manifest.sourceVersion, complete: first.count < batchSize)
-            // Initialization is for a missing cache only; never replace an existing database.
+                                  version: manifest.sourceVersion, complete: first.count < batchSize,
+                                  preloadedLocations: locations, preloadedMatches: matches)
             guard !FileManager.default.fileExists(atPath: destination.path) else {
                 throw SQLiteError.open("Existing content cache retained")
             }
@@ -337,16 +356,39 @@ actor StoryContentSyncService {
         }
     }
 
+    /// Fetch every referenced parent or fail without publishing a broken FK graph.
+    private func requiredParentRows(table: String, key: String, ids: Set<String>) async throws -> [[String: Any]] {
+        guard !ids.isEmpty else { return [] }
+        var found: [[String: Any]] = []
+        let sorted = ids.sorted()
+        for offset in stride(from: 0, to: sorted.count, by: 60) {
+            let batch = Array(sorted.dropFirst(offset).prefix(60))
+            let entries = try await rows(table: table,
+                filters: [URLQueryItem(name: key, value: "in.(\(batch.joined(separator: ",")))")])
+            guard Set(entries.compactMap { $0[key] as? String }) == Set(batch) else {
+                throw SQLiteError.step("Incomplete first-batch parent response for \(table)")
+            }
+            found.append(contentsOf: entries)
+        }
+        return found
+    }
+
     private func importBatch(at url: URL, movies: [[String: Any]], cursor: Int,
-                             total: Int, target: String, version: String, complete: Bool) async throws {
+                             total: Int, target: String, version: String, complete: Bool,
+                             preloadedLocations: [[String: Any]]? = nil,
+                             preloadedMatches: [[String: Any]]? = nil) async throws {
         let qids = movies.compactMap { $0["movie_qid"] as? String }
         let filter = "in.(\(qids.joined(separator: ",")))"
-        let locations = qids.isEmpty ? [] : try await rows(table: "story_movie_locations",
-                      filters: [URLQueryItem(name: "movie_qid", value: filter)])
+        let locations: [[String: Any]]
+        if let preloadedLocations { locations = preloadedLocations }
+        else { locations = qids.isEmpty ? [] : try await rows(table: "story_movie_locations",
+                      filters: [URLQueryItem(name: "movie_qid", value: filter)]) }
         let periods = qids.isEmpty ? [] : try await rows(table: "story_movie_periods",
                       filters: [URLQueryItem(name: "movie_qid", value: filter)])
-        let matches = qids.isEmpty ? [] : try await rows(table: "story_movie_target_matches",
-                      filters: [URLQueryItem(name: "movie_qid", value: filter)])
+        let matches: [[String: Any]]
+        if let preloadedMatches { matches = preloadedMatches }
+        else { matches = qids.isEmpty ? [] : try await rows(table: "story_movie_target_matches",
+                      filters: [URLQueryItem(name: "movie_qid", value: filter)]) }
         let db = try SQLiteDatabase(url: url, readOnly: false)
         try db.execute("PRAGMA foreign_keys=ON")
         try db.execute("BEGIN IMMEDIATE")

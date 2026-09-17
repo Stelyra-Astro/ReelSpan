@@ -121,23 +121,24 @@ final class CoreRulesTests: XCTestCase {
         XCTAssertFalse(MapLookupErrorPolicy.isNonFatal(domain: "Other", code: 8))
     }
 
-    func testResultsDrawerHidesForSearchAndReturnsToMediumAfterResults() {
+    func testResultsDrawerHidesForSearchUntilExplicitlyReopened() {
         var drawer = ResultsDrawerState()
-        XCTAssertEqual(drawer.level, .medium)
+        XCTAssertEqual(drawer.level, .hidden)
 
+        drawer.showResults()
         drawer.searchFocused()
         XCTAssertEqual(drawer.level, .hidden)
 
         drawer.searchFinished()
+        XCTAssertEqual(drawer.level, .hidden)
+
+        drawer.showResults()
         XCTAssertEqual(drawer.level, .medium)
     }
 
-    func testResultsDrawerCanRestAtTipAndExpandToFull() {
+    func testResultsDrawerCanExpandToFull() {
         var drawer = ResultsDrawerState()
-
-        drawer.move(to: .tip)
-        XCTAssertEqual(drawer.level, .tip)
-
+        drawer.showResults()
         drawer.move(to: .full)
         XCTAssertEqual(drawer.level, .full)
     }
@@ -145,17 +146,17 @@ final class CoreRulesTests: XCTestCase {
     func testMapNavigationCollapsesDrawerWithoutReopeningItAfterFocusUpdate() {
         var drawer = ResultsDrawerState()
         drawer.mapNavigationStarted()
-        XCTAssertEqual(drawer.level, .tip)
+        XCTAssertEqual(drawer.level, .hidden)
 
         drawer.mapFocusUpdated()
-        XCTAssertEqual(drawer.level, .tip)
+        XCTAssertEqual(drawer.level, .hidden)
     }
 
     func testManualDrawerCollapsePersistsUntilResultsAreExplicitlyRequested() {
         var drawer = ResultsDrawerState()
-        drawer.userMoved(to: .tip)
+        drawer.userDismissed()
         drawer.searchFinished()
-        XCTAssertEqual(drawer.level, .tip)
+        XCTAssertEqual(drawer.level, .hidden)
 
         drawer.showResults()
         XCTAssertEqual(drawer.level, .medium)

@@ -36,7 +36,6 @@ struct HomeView: View {
     @State private var cameraSuppressionTask: Task<Void, Never>?
     @State private var suppressCameraCallbacks = false
 
-    private let tipDetent = PresentationDetent.custom(CollapsedResultsDetent.self)
     private let defaultResultsDetent = PresentationDetent.custom(TwoMovieResultsDetent.self)
 
     var body: some View {
@@ -59,7 +58,15 @@ struct HomeView: View {
                 }
                 .id(model.effectiveInterfaceLanguage)
                 .environment(\.locale, Locale(identifier: model.effectiveInterfaceLanguage))
-                .mapStyle(.standard)
+                // Quiet native basemap: film markers remain the primary visual layer.
+                .mapStyle(
+                    .standard(
+                        elevation: .flat,
+                        emphasis: .muted,
+                        pointsOfInterest: .excludingAll,
+                        showsTraffic: false
+                    )
+                )
                 .ignoresSafeArea()
                 .simultaneousGesture(
                     SpatialTapGesture().onEnded { value in
@@ -89,13 +96,24 @@ struct HomeView: View {
                 // Keep the same atlas header, search and four filters in both modes.
                 FilmListView(showsMap: true).environmentObject(model)
                 Spacer()
-                if !model.movies.isEmpty {
+                if model.movies.isEmpty && model.catalogSearchError != nil && !model.isContentLoading && !model.isLoadingMovies {
+                    VStack(spacing: 8) {
+                        Text("Films unavailable for now").font(.subheadline.weight(.semibold))
+                        FilmRetryButton()
+                    }
+                    .padding(16)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.bottom, 12)
+                }
+                if !model.movies.isEmpty || model.mapResultCount != nil {
                     Button {
                         drawerState.showResults()
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "film.stack")
-                            Text("\(model.selectedWhere?.name ?? model.displayedPlaceName) · \(model.movies.count)\(model.hasMoreMovies ? "+" : "") films")
+                            Text(MapResultsLabel.text(place: model.selectedWhere?.name ?? model.displayedPlaceName,
+                                                      exactCount: model.mapResultCount,
+                                                      isPartial: !model.syncComplete))
                                 .lineLimit(1)
                             Image(systemName: "chevron.up")
                         }
@@ -138,12 +156,11 @@ struct HomeView: View {
         }
         .sheet(isPresented: resultsSheetIsPresented, onDismiss: resultsSheetDidDismiss) {
             movieSheet
-                .presentationDetents([tipDetent, defaultResultsDetent, .large], selection: selectedResultsDetent)
+                .presentationDetents([defaultResultsDetent, .large], selection: selectedResultsDetent)
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(24)
                 .presentationBackground(.regularMaterial)
                 .presentationBackgroundInteraction(.enabled(upThrough: defaultResultsDetent))
-                .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showYearPicker, onDismiss: restoreResultsDrawer) {
             YearPickerView(
@@ -192,7 +209,7 @@ struct HomeView: View {
         Binding(
             get: { !model.isListMode && drawerState.level != .hidden },
             set: { isPresented in
-                if !isPresented { drawerState.move(to: .hidden) }
+                if !isPresented { drawerState.userDismissed() }
             }
         )
     }
@@ -201,15 +218,12 @@ struct HomeView: View {
         Binding(
             get: {
                 switch drawerState.level {
-                case .tip: tipDetent
                 case .full: .large
                 case .hidden, .medium: defaultResultsDetent
                 }
             },
             set: { detent in
-                if detent == tipDetent {
-                    drawerState.userMoved(to: .tip)
-                } else if detent == .large {
+                if detent == .large {
                     drawerState.userMoved(to: .full)
                 } else {
                     drawerState.userMoved(to: .medium)
@@ -459,22 +473,6 @@ struct HomeView: View {
 
     @ViewBuilder
     private var movieSheet: some View {
-        if drawerState.level == .tip {
-            HStack(spacing: 8) {
-                Text(model.isContentLoading
-                     ? L10n.text("home.loading_content")
-                     : (model.selectedLocation?.name ?? model.displayedPlaceName))
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Text("\(L10n.year(model.storyTimeSelection.startYear))–\(L10n.year(model.storyTimeSelection.endYear))")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 2)
-            .accessibilityLabel(Text("home.list_picker"))
-        } else {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 5) {
                     if let message = model.fallbackMessage {
@@ -508,7 +506,7 @@ struct HomeView: View {
 
                     Text(model.isContentLoading
                          ? L10n.text("home.loading_content_detail")
-                         : (model.movies.isEmpty ? L10n.text("home.no_matching_movies") : L10n.text("home.match_explanation")))
+                         : (model.movies.isEmpty ? (model.catalogSearchError == nil ? L10n.text("home.no_matching_movies") : "Films unavailable for now") : L10n.text("home.match_explanation")))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -546,7 +544,6 @@ struct HomeView: View {
             .fullScreenCover(item: $selectedDrawerMovie) { movie in
                 MovieDetailView(movie: movie).environmentObject(model)
             }
-        }
     }
 
     private func choose(_ suggestion: UnifiedSearchSuggestion) {
@@ -701,12 +698,6 @@ struct FavoritesView: View {
                 ContributionHubView(movie: movie).environmentObject(model)
             }
         }
-    }
-}
-
-private struct CollapsedResultsDetent: CustomPresentationDetent {
-    static func height(in context: Context) -> CGFloat? {
-        context.maxDetentValue * 0.11
     }
 }
 

@@ -25,44 +25,62 @@ enum SearchSuggestionOrder {
 
 enum ResultsDrawerLevel: Equatable {
     case hidden
-    case tip
     case medium
     case full
 }
 
+/// A dismissed sheet occupies no screen area. The separate map pill remains tappable.
 struct ResultsDrawerState: Equatable {
-    private(set) var level: ResultsDrawerLevel = .medium
-    private var keepsCollapsed = false
+    private(set) var level: ResultsDrawerLevel = .hidden
+    private var keepsCollapsed = true
 
     mutating func searchFocused() {
-        level = .hidden
+        userDismissed()
     }
 
     mutating func searchFinished() {
-        level = keepsCollapsed ? .tip : .medium
+        if !keepsCollapsed { level = .medium }
     }
 
     mutating func mapNavigationStarted() {
-        level = .tip
-        keepsCollapsed = true
+        userDismissed()
     }
 
     mutating func mapFocusUpdated() {
-        // Deliberately keep the current level so map browsing is uninterrupted.
+        // A map camera callback must not reopen a dismissed drawer.
     }
 
     mutating func move(to level: ResultsDrawerLevel) {
         self.level = level
+        keepsCollapsed = level == .hidden
     }
 
     mutating func userMoved(to level: ResultsDrawerLevel) {
-        self.level = level
-        keepsCollapsed = level == .tip
+        // Dragging down from the expanded sheet should close it entirely,
+        // rather than parking at the smaller sheet detent.
+        if self.level == .full && level == .medium {
+            userDismissed()
+        } else {
+            move(to: level)
+        }
+    }
+
+    mutating func userDismissed() {
+        keepsCollapsed = true
+        level = .hidden
     }
 
     mutating func showResults() {
         keepsCollapsed = false
         level = .medium
+    }
+}
+
+/// Only an exact total may be placed next to a country or city name.
+enum MapResultsLabel {
+    static func text(place: String, exactCount: Int?, isPartial: Bool = false) -> String {
+        guard let exactCount else { return "\(place) · Films" }
+        return "\(place) · \(exactCount) \(isPartial ? "saved films" : "films")"
     }
 }
 

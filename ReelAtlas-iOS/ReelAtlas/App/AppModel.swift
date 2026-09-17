@@ -25,7 +25,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var syncComplete = false
     @Published private(set) var contentSyncError: String?
     @Published private(set) var isUpdatingContent = false
-    @Published var isListMode = true
+    @Published var isListMode = false
     @Published private(set) var whenConcepts: [TimeConcept] = []
     @Published private(set) var whereCatalog: [ModernWherePlace] = []
     @Published private(set) var isLoadingWhereCatalog = false
@@ -39,7 +39,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var selectedSort = "recommended"
     @Published private(set) var catalogSearchError: String?
     @Published private(set) var isLoadingMovies = false
+    @Published private(set) var isRetryingFilms = false
     @Published private(set) var hasMoreMovies = false
+    @Published private(set) var mapResultCount: Int?
+    @Published private(set) var showingOfflineSamples = false
     @Published private(set) var movieCacheBytes: Int64 = 0
     @Published private(set) var initialLocationResolved = false
     @Published var iCloudBackupEnabled: Bool
@@ -62,11 +65,17 @@ final class AppModel: ObservableObject {
     private var contentBootstrapGate = ContentBootstrapGate()
     private var cloudBackupTask: Task<Void, Never>?
     private var moviePageTask: Task<Void, Never>?
+    private var mapCountTask: Task<Void, Never>?
     private var moviePageGeneration = UUID()
     private var movieLocationScope: MovieLocationScope?
     private var catalogRetryTask: Task<Void, Never>?
     private var lastCatalogRequest: CatalogDiscoveryService.Request?
     private var contentSyncRetryTask: Task<Void, Never>?
+    private var initialContentRetryTask: Task<Void, Never>?
+    private var initialContentRetryDelaySeconds = 30
+    private var whereCatalogRetryTask: Task<Void, Never>?
+    private var countryLinksRetryTask: Task<Void, Never>?
+    private var countryLinksRequested = false
     private var contentSyncRetryDelaySeconds = 30
     private var catalogRetryDelaySeconds = 30
     private var appIsActive = true
@@ -103,6 +112,9 @@ final class AppModel: ObservableObject {
             let databaseURL = try await contentSync.ensureCurrentContent()
             let repository = try ContentRepository(databaseURL: databaseURL)
             content = repository
+            initialContentRetryTask?.cancel()
+            initialContentRetryTask = nil
+            initialContentRetryDelaySeconds = 30
             await searchData.configure(databaseURL: databaseURL)
             await moviePages.configure(databaseURL: databaseURL)
             databaseVersion = repository.databaseVersion()
@@ -116,12 +128,14 @@ final class AppModel: ObservableObject {
             whenConcepts = repository.timeConcepts(preferredLanguage: effectiveLanguage)
             Task { [weak self] in await self?.ensureWhereCatalog() }
 
+            // Show the on-device catalog before reverse geocoding or iCloud.
+            applyCaliforniaFallback()
             if contentBootstrapGate.markContentReady() {
-                await resolvePendingInitialLocation()
-            } else {
-                applyCaliforniaFallback()
+                Task { [weak self] in await self?.resolvePendingInitialLocation() }
             }
-            if iCloudBackupEnabled && syncComplete { await restoreICloudBackup() }
+            if iCloudBackupEnabled && syncComplete {
+                Task { [weak self] in await self?.restoreICloudBackup() }
+            }
             Task { [weak self] in
                 guard let self else { return }
                 if let online = try? await self.catalog.concepts(language: self.effectiveLanguage) {
@@ -133,6 +147,7 @@ final class AppModel: ObservableObject {
             // A first install without a usable cache must not show technical error alerts.
             NSLog("[ReelSpan] Initial story cache unavailable: %@", String(describing: error))
             catalogSearchError = "Story cache unavailable"
+            scheduleInitialContentRetry()
         }
     }
 
@@ -157,16 +172,15 @@ final class AppModel: ObservableObject {
 
     /// Foreground refresh is throttled; sync failures are logged, not shown over usable films.
     func retryContentSyncIfNeeded() async {
+        if content == nil {
+            if Date().timeIntervalSince(lastContentSyncAttempt) >= 30 { await loadStoryContent() }
+            return
+        }
         if catalogSearchError != nil {
             if movies.isEmpty { reload() }
             else { await retryCatalogSilently() }
         }
         guard !isUpdatingContent, Date().timeIntervalSince(lastContentSyncAttempt) >= 300 else { return }
-        if content == nil {
-            lastContentSyncAttempt = Date()
-            await loadStoryContent()
-            return
-        }
         await resumeContentSync()
         if whereCatalog.isEmpty { await ensureWhereCatalog() }
     }
@@ -178,8 +192,55 @@ final class AppModel: ObservableObject {
             catalogRetryTask = nil
             contentSyncRetryTask?.cancel()
             contentSyncRetryTask = nil
-        } else if contentSyncError != nil {
-            scheduleContentSyncRetry()
+            initialContentRetryTask?.cancel()
+            initialContentRetryTask = nil
+            whereCatalogRetryTask?.cancel()
+            whereCatalogRetryTask = nil
+            countryLinksRetryTask?.cancel()
+            countryLinksRetryTask = nil
+        } else {
+            if content == nil { scheduleInitialContentRetry() }
+            else if contentSyncError != nil { scheduleContentSyncRetry() }
+            if whereCatalogError != nil { scheduleWhereCatalogRetry() }
+            if countryLinksRequested && movies.contains(where: { movieCountryQIDs[$0.movieQID] == nil }) {
+                scheduleCountryLinksRetry()
+            }
+            if catalogSearchError != nil { scheduleCatalogRetry() }
+        }
+    }
+
+    private func scheduleInitialContentRetry() {
+        guard appIsActive, content == nil, initialContentRetryTask == nil else { return }
+        let delay = initialContentRetryDelaySeconds
+        initialContentRetryDelaySeconds = min(delay * 2, 300)
+        initialContentRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self else { return }
+            self.initialContentRetryTask = nil
+            guard self.appIsActive, self.content == nil else { return }
+            await self.loadStoryContent()
+        }
+    }
+
+    private func scheduleWhereCatalogRetry() {
+        guard appIsActive, whereCatalogRetryTask == nil else { return }
+        whereCatalogRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            guard let self else { return }
+            self.whereCatalogRetryTask = nil
+            guard self.appIsActive else { return }
+            await self.ensureWhereCatalog()
+        }
+    }
+
+    private func scheduleCountryLinksRetry() {
+        guard appIsActive, countryLinksRetryTask == nil else { return }
+        countryLinksRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            guard let self else { return }
+            self.countryLinksRetryTask = nil
+            guard self.appIsActive else { return }
+            await self.loadCountryAssociations()
         }
     }
 
@@ -213,6 +274,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Explicit retry bypasses backoff without clearing last-known-good rows.
+    func retryUnavailableFilms() async {
+        guard !isLoadingMovies, !isContentLoading, !isRetryingFilms else { return }
+        isRetryingFilms = true
+        defer { isRetryingFilms = false }
+        initialContentRetryTask?.cancel()
+        initialContentRetryTask = nil
+        catalogRetryTask?.cancel()
+        catalogRetryTask = nil
+        if content == nil {
+            await loadStoryContent()
+        } else if lastCatalogRequest != nil {
+            await catalog.resetRetryCooldown()
+            await retryCatalogSilently()
+        } else {
+            reload()
+        }
+    }
+
     /// Refresh the first visible page in place. A failed request must not blank cached rows.
     private func retryCatalogSilently() async {
         guard let request = lastCatalogRequest else {
@@ -226,7 +306,7 @@ final class AppModel: ObservableObject {
         let generation = moviePageGeneration
         let language = effectiveLanguage
         do {
-            let page = try await catalog.page(request, language: language)
+            let page = try await catalog.page(request, language: language, refresh: true)
             guard moviePageGeneration == generation, appIsActive else { return }
             if page.isStale {
                 scheduleCatalogRetry()
@@ -235,6 +315,9 @@ final class AppModel: ObservableObject {
             let firstPageCount = min(request.limit, movies.count)
             let sameFirstPage = movies.prefix(firstPageCount).map(\.movieQID) == page.movies.prefix(firstPageCount).map(\.movieQID)
             if sameFirstPage && page.movies.count == firstPageCount {
+                hasMoreMovies = MoviePaginationPolicy.hasMoreAfterFirstPageRefresh(
+                    loadedCount: movies.count, pageSize: request.limit,
+                    currentHasMore: hasMoreMovies, refreshedHasMore: page.hasMore)
                 movies.replaceSubrange(0..<firstPageCount, with: page.movies)
             } else {
                 movies = page.movies
@@ -247,6 +330,7 @@ final class AppModel: ObservableObject {
                 }
             }
             catalogSearchError = nil
+            showingOfflineSamples = false
             catalogRetryDelaySeconds = 30
         } catch {
             guard moviePageGeneration == generation, appIsActive else { return }
@@ -266,8 +350,12 @@ final class AppModel: ObservableObject {
         databaseVersion = refreshed.databaseVersion()
         await searchData.configure(databaseURL: url)
         await moviePages.configure(databaseURL: url)
+        // Counts come from the updated permanent SQLite, independently of network pages.
+        refreshMapResultCount()
         // Reconcile changed story locations without interrupting the list's visible film rows.
-        if !isListMode { reload() }
+        // A content batch can arrive repeatedly. Keep the current rows and pins
+        // until a matching catalog refresh has actually succeeded.
+        if !isListMode && !movies.isEmpty { await retryCatalogSilently() }
         if progress.isComplete && iCloudBackupEnabled {
             await restoreICloudBackup()
             scheduleICloudBackup()
@@ -340,6 +428,7 @@ final class AppModel: ObservableObject {
             }
         } catch {
             whereCatalogError = whereCatalog.isEmpty ? error.localizedDescription : nil
+            if whereCatalog.isEmpty { scheduleWhereCatalogRetry() }
         }
     }
 
@@ -371,13 +460,19 @@ final class AppModel: ObservableObject {
     }
 
     func loadCountryAssociations() async {
+        countryLinksRequested = true
         let missing = movies.map(\.movieQID).filter { movieCountryQIDs[$0] == nil }
         guard !missing.isEmpty else { return }
         for offset in stride(from: 0, to: missing.count, by: 30) {
             let qids = Array(missing.dropFirst(offset).prefix(30))
-            guard let found = try? await catalog.movieCountryLinks(movieQIDs: qids) else { return }
+            guard let found = try? await catalog.movieCountryLinks(movieQIDs: qids) else {
+                scheduleCountryLinksRetry()
+                return
+            }
             for qid in qids { movieCountryQIDs[qid] = found[qid] ?? [] }
         }
+        countryLinksRetryTask?.cancel()
+        countryLinksRetryTask = nil
     }
 
     func findModernPlaces(_ query: String) async -> [ModernWherePlace] {
@@ -511,17 +606,24 @@ final class AppModel: ObservableObject {
         guard let manifest = await iCloudBackup.restore() else { return }
         let restoredIDs = content.movieIDs(qids: manifest.favoriteMovieQIDs)
         let merged = favoriteIDs.union(restoredIDs)
-        favoriteIDs = merged
-        users?.replaceFavorites(with: merged)
+        let favoritesChanged = merged != favoriteIDs
+        if favoritesChanged {
+            favoriteIDs = merged
+            users?.replaceFavorites(with: merged)
+        }
+        var languageChanged = false
         if !manifest.interfaceLanguage.isEmpty {
             let restoredLanguage = InterfaceLanguageResolver.identifier(
                 preference: manifest.interfaceLanguage,
                 systemLanguages: Locale.preferredLanguages
             )
-            interfaceLanguagePreference = restoredLanguage
-            UserDefaults.standard.set(restoredLanguage, forKey: "interfaceLanguage")
+            if restoredLanguage != interfaceLanguagePreference {
+                interfaceLanguagePreference = restoredLanguage
+                UserDefaults.standard.set(restoredLanguage, forKey: "interfaceLanguage")
+                languageChanged = true
+            }
         }
-        reload()
+        if languageChanged || (favoritesOnly && favoritesChanged) { reload() }
     }
 
     private func scheduleICloudBackup() {
@@ -668,6 +770,7 @@ final class AppModel: ObservableObject {
 
     func reload() {
         clearMovies()
+        refreshMapResultCount()
         hasMoreMovies = isListMode || movieLocationScope != nil
         // A selected Where filter is valid even before a map pin has been selected.
         if !isListMode && selectedWhere != nil { hasMoreMovies = true }
@@ -675,6 +778,9 @@ final class AppModel: ObservableObject {
     }
 
     private func clearMovies() {
+        mapCountTask?.cancel()
+        mapCountTask = nil
+        mapResultCount = nil
         moviePageTask?.cancel()
         moviePageGeneration = UUID()
         movies = []
@@ -682,6 +788,49 @@ final class AppModel: ObservableObject {
         lastCatalogRequest = nil
         isLoadingMovies = false
         hasMoreMovies = false
+        showingOfflineSamples = false
+    }
+
+    /// Count the *complete saved* story dataset; a first loaded page is never a total.
+    /// Text/genre/period-QID filters are not fully indexed in the story cache, so
+    /// do not claim an exact count for those filters rather than guess from a page.
+    private func refreshMapResultCount() {
+        mapCountTask?.cancel()
+        mapCountTask = nil
+        mapResultCount = nil
+        guard !isListMode, content != nil,
+              globalSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              selectedGenre == nil, selectedWhen == nil else { return }
+        let sourceScope: MovieLocationScope?
+        if let selectedWhere {
+            sourceScope = selectedWhere.category == "country"
+                ? .country(countryCode: "", countryQID: selectedWhere.qid)
+                : .place(targetQID: selectedWhere.qid)
+        } else {
+            sourceScope = movieLocationScope
+        }
+        guard let sourceScope else { return }
+        let scope: LocalFilmCountScope
+        switch sourceScope {
+        case .place(let qid): scope = .place(qid)
+        case .country(_, let qid): scope = .country(qid)
+        }
+        let startYear = storyTimeSelection.startYear
+        let endYear = storyTimeSelection.endYear
+        let includeUnknown = StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear)
+        let selectedFavorites: Set<Int>? = favoritesOnly ? favoriteIDs : nil
+        let generation = moviePageGeneration
+        mapCountTask = Task { [weak self] in
+            let count = await Task.detached(priority: .userInitiated) { () -> Int? in
+                guard let url = try? ContentRepository.cacheURL(),
+                      let store = try? LocalFilmCountStore(databaseURL: url) else { return nil }
+                return try? store.exactCount(startYear: startYear, endYear: endYear,
+                                             includeUnknown: includeUnknown, scope: scope,
+                                             favoriteIDs: selectedFavorites)
+            }.value
+            guard !Task.isCancelled, let self, self.moviePageGeneration == generation else { return }
+            self.mapResultCount = count
+        }
     }
 
     func loadMoreMovies() {
@@ -723,36 +872,53 @@ final class AppModel: ObservableObject {
                     genre: genre, sort: sort, offset: offset,
                     limit: MoviePaginationPolicy.resultPageSize)
                 if offset == 0 { lastCatalogRequest = request }
+                // An exact page snapshot is authoritative for this filter,
+                // language, regional sort and offset. Never wait for the RPC.
+                if offset == 0, let saved = try? await catalog.cachedPage(request, language: language),
+                   !saved.movies.isEmpty || !saved.hasMore {
+                    guard !Task.isCancelled, moviePageGeneration == generation else { return }
+                    publishCatalogPage(saved, listMode: listMode)
+                    if saved.isStale { Task { [weak self] in await self?.retryCatalogSilently() } }
+                    return
+                }
+                // Upgrade path: Build 11 has story SQLite + MovieMetadata-v1,
+                // but has never written a discovery-page snapshot. Use only
+                // locally matched, titled films and mark the subset as partial.
+                let canUseLocal = offset == 0 && search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && concept == nil && genre == nil && (sort == "recommended" || sort.hasPrefix("country:"))
+                if canUseLocal {
+                    let offline = await moviePages.offlinePage(
+                        startYear: startYear, endYear: endYear,
+                        scope: listMode ? listScope : (listScope ?? mapScope),
+                        language: language, metadataService: metadataStore.service)
+                    guard !Task.isCancelled, moviePageGeneration == generation else { return }
+                    if !offline.movies.isEmpty {
+                        movies = offline.movies
+                        storyLocationPins = listMode ? [] : offline.storyLocations
+                        hasMoreMovies = false // This is a saved subset, not the complete catalog.
+                        showingOfflineSamples = true
+                        catalogSearchError = nil
+                        isLoadingMovies = false
+                        Task { [weak self] in await self?.retryCatalogSilently() }
+                        return
+                    }
+                }
                 do {
                     let page = try await catalog.page(request, language: language)
                     guard !Task.isCancelled, moviePageGeneration == generation else { return }
-                    movies.append(contentsOf: page.movies)
-                    if !listMode {
-                        var seen = Set(storyLocationPins.map(\.rawPlaceQID))
-                        storyLocationPins.append(contentsOf: page.movies.flatMap(\.locations).filter { location in
-                            location.coordinate != nil && seen.insert(location.rawPlaceQID).inserted
-                        })
-                    }
-                    hasMoreMovies = page.hasMore
-                    catalogRetryTask?.cancel()
-                    catalogRetryTask = nil
-                    catalogRetryDelaySeconds = 30
-                    catalogSearchError = page.isStale ? "Cached catalog page needs refresh" : nil
-                    if page.isStale { scheduleCatalogRetry() }
-                    isLoadingMovies = false
+                    publishCatalogPage(page, listMode: listMode)
+                    if page.isStale { Task { [weak self] in await self?.retryCatalogSilently() } }
                     return
                 } catch {
                     guard !Task.isCancelled, moviePageGeneration == generation else { return }
                     catalogSearchError = "Full catalog search is temporarily unavailable."
                     NSLog("[ReelSpan] Discovery failed: %@", String(describing: error))
                     scheduleCatalogRetry()
-                    // Local SQLite has only IDs and story relations; it cannot correctly
-                    // fulfill text/genre/concept queries or supply the full-catalog titles.
-                    if listMode || !search.isEmpty || concept != nil || genre != nil || listScope != nil {
-                        hasMoreMovies = false
-                        isLoadingMovies = false
-                        return
-                    }
+                    // Never pass bare Wikidata QIDs off as film titles, nor
+                    // show unrelated results for an unavailable exact filter.
+                    hasMoreMovies = false
+                    isLoadingMovies = false
+                    return
                 }
             }
             let page = await moviePages.page(
@@ -769,12 +935,44 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func publishCatalogPage(_ page: CatalogDiscoveryService.Page, listMode: Bool) {
+        movies.append(contentsOf: page.movies)
+        if !listMode {
+            var seen = Set(storyLocationPins.map(\.rawPlaceQID))
+            storyLocationPins.append(contentsOf: page.movies.flatMap(\.locations).filter { location in
+                location.coordinate != nil && seen.insert(location.rawPlaceQID).inserted
+            })
+        }
+        hasMoreMovies = page.hasMore
+        catalogSearchError = page.isStale ? "Cached catalog page needs refresh" : nil
+        showingOfflineSamples = false
+        isLoadingMovies = false
+        if !page.isStale {
+            catalogRetryTask?.cancel()
+            catalogRetryTask = nil
+            catalogRetryDelaySeconds = 30
+        }
+    }
+
     private func applyCaliforniaFallback() {
-        selectedCoordinate = InitialLocationFallback.coordinate
-        selectedLocation = content?.bestLocationMatch(
+        let california = content?.bestLocationMatch(
             candidateNames: InitialLocationFallback.candidateNames,
             preferredLanguage: effectiveLanguage
         )
+        // The first-install SQLite intentionally contains only the first movie
+        // batch. Its nearest indexed movie is visible immediately, even when
+        // the California target has not been downloaded yet.
+        let nearest = content?.nearestMovieLocation(
+            latitude: InitialLocationFallback.coordinate.latitude,
+            longitude: InitialLocationFallback.coordinate.longitude,
+            preferredLanguage: effectiveLanguage
+        )
+        if !syncComplete {
+            selectedLocation = nearest ?? california
+        } else {
+            selectedLocation = california ?? nearest
+        }
+        selectedCoordinate = selectedLocation?.coordinate ?? InitialLocationFallback.coordinate
         displayedPlaceName = selectedLocation?.name ?? InitialLocationFallback.displayName
         movieLocationScope = selectedLocation.map { .place(targetQID: $0.targetQID) }
         mapViewportIntent.select(PlaceSearchViewportPolicy.viewport(
@@ -785,7 +983,7 @@ final class AppModel: ObservableObject {
         ))
         temporarySearchMarker = nil
         initialLocationResolved = true
-        if selectedLocation != nil { reload() } else { clearMovies() }
+        if selectedLocation != nil || isListMode { reload() } else { clearMovies() }
     }
 }
 
@@ -796,8 +994,32 @@ private actor MoviePageWorker {
         content = try? ContentRepository(databaseURL: databaseURL)
     }
 
-    /// Only request metadata for the visible page; a 50k-film catalog must never
-    /// trigger tens of thousands of ranking requests during a single map reload.
+    /// Only the last-known-good metadata files are enumerated. SQLite enforces
+    /// the actual location and time predicates before a movie can be shown.
+    func offlinePage(startYear: Int, endYear: Int, scope: MovieLocationScope?,
+                     language: String, metadataService: MovieMetadataService) async -> MoviePage {
+        guard let content, !Task.isCancelled else { return .empty }
+        // Never cap this to the 400 most recently viewed files: an older place
+        // may have perfectly valid saved metadata that must still work offline.
+        let savedIDs = await metadataService.cachedMetadataIDs(limit: .max)
+        var movies: [MovieViewData] = []
+        for tmdbID in savedIDs {
+            guard !Task.isCancelled else { return .empty }
+            guard let base = content.cachedMovie(tmdbID: tmdbID, startYear: startYear,
+                                                  endYear: endYear, scope: scope,
+                                                  preferredLanguage: language) else { continue }
+            // Only decode matching files; keep the SQLite match and title paired.
+            guard let detail = await metadataService.cachedMetadata(tmdbIDs: [tmdbID]).first,
+                  !detail.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            movies.append(base.enriching(with: detail))
+            if movies.count == MoviePaginationPolicy.resultPageSize { break }
+        }
+        var seen = Set<String>()
+        let pins = movies.flatMap(\.locations).filter { $0.coordinate != nil && seen.insert($0.rawPlaceQID).inserted }
+        return MoviePage(movies: movies, hasMore: false, storyLocations: pins)
+    }
+
+    /// Local favorites and map fallback must not wait for an uncached ranking RPC.
     func page(
         startYear: Int, endYear: Int, scope: MovieLocationScope?,
         language: String, favoritesOnly: Bool, favoriteIDs: Set<Int>,
@@ -812,17 +1034,11 @@ private actor MoviePageWorker {
         guard offset < candidates.count else { return .empty }
         let selected = Array(candidates.dropFirst(offset).prefix(size))
         let hasMore = candidates.count > offset + size
-        let tmdbIDs = selected.compactMap(\.tmdbID)
-        var byTMDB: [Int: MovieRanking] = [:]
-        for batch in MovieRankingBatchPolicy.batches(tmdbIDs) {
-            guard !Task.isCancelled else { return .empty }
-            if let rankings = try? await metadataService.rankings(tmdbIDs: batch) {
-                for ranking in rankings { byTMDB[ranking.tmdbID] = ranking }
-            }
-        }
+        let saved = await metadataService.cachedMetadata(tmdbIDs: selected.compactMap(\.tmdbID))
+        let byTMDB = Dictionary(saved.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let movies = selected.map { movie in
-            guard let tmdbID = movie.tmdbID, let ranking = byTMDB[tmdbID] else { return movie }
-            return movie.applying(ranking: ranking)
+            guard let tmdbID = movie.tmdbID, let details = byTMDB[tmdbID] else { return movie }
+            return movie.enriching(with: details)
         }
         var seen = Set<String>()
         let locations = movies.flatMap(\.locations).filter { location in
