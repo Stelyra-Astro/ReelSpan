@@ -12,7 +12,7 @@ struct ReelAtlasApp: App {
                 .environment(\.locale, Locale(identifier: model.effectiveInterfaceLanguage))
                 .preferredColorScheme(.light)
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await model.resumeContentSync() } }
+                    if phase == .active { Task { await model.retryContentSyncIfNeeded() } }
                 }
         }
     }

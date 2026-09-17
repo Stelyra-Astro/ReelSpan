@@ -2,7 +2,7 @@ import Foundation
 
 /// Reads the full published Supabase catalog, independent of the phone's SQLite sync cursor.
 actor CatalogDiscoveryService {
-    struct Request: Sendable {
+    struct Request: Codable, Sendable {
         var query: String = ""
         var startYear: Int?
         var endYear: Int?
@@ -18,22 +18,23 @@ actor CatalogDiscoveryService {
     struct Page: Sendable {
         let movies: [MovieViewData]
         let hasMore: Bool
+        let isStale: Bool
     }
 
-    struct Genre: Decodable { let name: String? }
-    struct Period: Decodable {
+    struct Genre: Codable { let name: String? }
+    struct Period: Codable {
         let start: Int?
         let end: Int?
         let qid: String?
     }
-    struct Place: Decodable {
+    struct Place: Codable {
         let qid: String
         let name: String
         let name_zh: String?
         let latitude: Double?
         let longitude: Double?
     }
-    struct Film: Decodable {
+    struct Film: Codable {
         let movie_qid: String
         let legacy_id: Int
         let tmdb_id: Int?
@@ -85,6 +86,51 @@ actor CatalogDiscoveryService {
 
     private var whereSnapshot: WhereSnapshot?
     private var lastWhereCheck = Date.distantPast
+    private struct CachedPage: Codable {
+        let key: String
+        let rows: [Film]
+        let savedAt: Date
+    }
+    private var pageCache: [String: CachedPage] = [:]
+    private var hasLoadedPageCache = false
+    private var offlineUntil = Date.distantPast
+
+    private func pageCacheURL() throws -> URL {
+        let directory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                                    appropriateFor: nil, create: true)
+        return directory.appendingPathComponent("reelspan-discovery-pages-v1.json")
+    }
+
+    private func cacheKey(_ request: Request, language: String) throws -> String {
+        // The complete request is part of the key: an offline filter must never show
+        // unrelated results from a previous place, period, sort order, or page.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let encoded = try encoder.encode(request)
+        return language + ":" + encoded.base64EncodedString()
+    }
+
+    private func readCachedPage(key: String) -> CachedPage? {
+        if !hasLoadedPageCache {
+            hasLoadedPageCache = true
+            if let url = try? pageCacheURL(), let data = try? Data(contentsOf: url),
+               let pages = try? JSONDecoder().decode([CachedPage].self, from: data) {
+                pageCache = Dictionary(pages.map { ($0.key, $0) }, uniquingKeysWith: { newest, _ in newest })
+            }
+        }
+        return pageCache[key]
+    }
+
+    private func writeCachedPage(key: String, rows: [Film]) {
+        _ = readCachedPage(key: key)
+        pageCache[key] = CachedPage(key: key, rows: rows, savedAt: Date())
+        // Bounded disk usage; only previously viewed pages are kept offline.
+        let recent = Array(pageCache.values.sorted { $0.savedAt > $1.savedAt }.prefix(60))
+        pageCache = Dictionary(recent.map { ($0.key, $0) }, uniquingKeysWith: { newest, _ in newest })
+        if let url = try? pageCacheURL(), let data = try? JSONEncoder().encode(recent) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
 
     private func whereCacheURL() throws -> URL {
         let directory = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
@@ -165,6 +211,11 @@ actor CatalogDiscoveryService {
 
     func page(_ parameters: Request, language: String) async throws -> Page {
         let maxRows = min(max(parameters.limit, 1), 49)
+        let key = try cacheKey(parameters, language: language)
+        if Date() < offlineUntil, let saved = readCachedPage(key: key) {
+            return Page(movies: saved.rows.prefix(maxRows).map { Self.movieData($0, language: language) },
+                        hasMore: saved.rows.count > maxRows, isStale: true)
+        }
         let payload: [String: Any] = [
             "p_query": parameters.query,
             "p_start_year": parameters.startYear as Any? ?? NSNull(),
@@ -177,9 +228,21 @@ actor CatalogDiscoveryService {
             "p_limit": maxRows + 1,
             "p_offset": max(0, parameters.offset)
         ]
-        let rows = try JSONDecoder().decode([Film].self, from: try await post("reelatlas_discover", payload: payload))
-        let movies = rows.prefix(maxRows).map { Self.movieData($0, language: language) }
-        return Page(movies: movies, hasMore: rows.count > maxRows)
+        do {
+            let rows = try JSONDecoder().decode([Film].self, from: try await post("reelatlas_discover", payload: payload))
+            writeCachedPage(key: key, rows: rows)
+            offlineUntil = .distantPast
+            return Page(movies: rows.prefix(maxRows).map { Self.movieData($0, language: language) },
+                        hasMore: rows.count > maxRows, isStale: false)
+        } catch {
+            offlineUntil = Date().addingTimeInterval(30)
+            NSLog("[ReelSpan] Catalog page refresh failed: %@", String(describing: error))
+            if let saved = readCachedPage(key: key) {
+                return Page(movies: saved.rows.prefix(maxRows).map { Self.movieData($0, language: language) },
+                            hasMore: saved.rows.count > maxRows, isStale: true)
+            }
+            throw error
+        }
     }
 
     static func movieData(_ row: Film, language: String) -> MovieViewData {
@@ -256,10 +319,37 @@ actor CatalogDiscoveryService {
     }
 
     private func perform(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw SQLiteError.step("Film catalog is temporarily unavailable")
+        var request = request
+        request.timeoutInterval = 15
+        for attempt in 0..<3 {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw SQLiteError.step("Invalid catalog response")
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? String ?? "unknown"
+                    NSLog("[ReelSpan] Catalog HTTP %ld PostgREST=%@ path=%@", http.statusCode, code,
+                          request.url?.path ?? "unknown")
+                    if attempt < 2 && [408, 429, 500, 502, 503, 504].contains(http.statusCode) {
+                        try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
+                        continue
+                    }
+                    throw SQLiteError.step("Catalog HTTP \(http.statusCode) (\(code))")
+                }
+                return data
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                NSLog("[ReelSpan] Catalog request failed path=%@ error=%@",
+                      request.url?.path ?? "unknown", String(describing: error))
+                if attempt < 2, error is URLError {
+                    try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
+                    continue
+                }
+                throw error
+            }
         }
-        return data
+        throw SQLiteError.step("Catalog request retry exhausted")
     }
 }

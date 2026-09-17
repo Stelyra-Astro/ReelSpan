@@ -64,6 +64,14 @@ final class AppModel: ObservableObject {
     private var moviePageTask: Task<Void, Never>?
     private var moviePageGeneration = UUID()
     private var movieLocationScope: MovieLocationScope?
+    private var catalogRetryTask: Task<Void, Never>?
+    private var lastCatalogRequest: CatalogDiscoveryService.Request?
+    private var contentSyncRetryTask: Task<Void, Never>?
+    private var contentSyncRetryDelaySeconds = 30
+    private var catalogRetryDelaySeconds = 30
+    private var appIsActive = true
+    private var isLoadingInitialContent = false
+    private var lastContentSyncAttempt = Date.distantPast
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -86,7 +94,11 @@ final class AppModel: ObservableObject {
     }
 
     private func loadStoryContent() async {
-        defer { isContentLoading = false }
+        guard !isLoadingInitialContent else { return }
+        isLoadingInitialContent = true
+        lastContentSyncAttempt = Date()
+        isContentLoading = true
+        defer { isContentLoading = false; isLoadingInitialContent = false }
         do {
             let databaseURL = try await contentSync.ensureCurrentContent()
             let repository = try ContentRepository(databaseURL: databaseURL)
@@ -118,12 +130,15 @@ final class AppModel: ObservableObject {
             }
             Task { [weak self] in await self?.resumeContentSync() }
         } catch {
-            errorMessage = error.localizedDescription
+            // A first install without a usable cache must not show technical error alerts.
+            NSLog("[ReelSpan] Initial story cache unavailable: %@", String(describing: error))
+            catalogSearchError = "Story cache unavailable"
         }
     }
 
     func resumeContentSync() async {
         guard content != nil, !isUpdatingContent else { return }
+        lastContentSyncAttempt = Date()
         isUpdatingContent = true
         contentSyncError = nil
         defer { isUpdatingContent = false }
@@ -131,6 +146,114 @@ final class AppModel: ObservableObject {
             await self?.acceptSyncedBatch(progress)
         }
         contentSyncError = await contentSync.lastSyncError
+        if contentSyncError == nil {
+            contentSyncRetryTask?.cancel()
+            contentSyncRetryTask = nil
+            contentSyncRetryDelaySeconds = 30
+        } else {
+            scheduleContentSyncRetry()
+        }
+    }
+
+    /// Foreground refresh is throttled; sync failures are logged, not shown over usable films.
+    func retryContentSyncIfNeeded() async {
+        if catalogSearchError != nil {
+            if movies.isEmpty { reload() }
+            else { await retryCatalogSilently() }
+        }
+        guard !isUpdatingContent, Date().timeIntervalSince(lastContentSyncAttempt) >= 300 else { return }
+        if content == nil {
+            lastContentSyncAttempt = Date()
+            await loadStoryContent()
+            return
+        }
+        await resumeContentSync()
+        if whereCatalog.isEmpty { await ensureWhereCatalog() }
+    }
+
+    func setAppActive(_ active: Bool) {
+        appIsActive = active
+        if !active {
+            catalogRetryTask?.cancel()
+            catalogRetryTask = nil
+            contentSyncRetryTask?.cancel()
+            contentSyncRetryTask = nil
+        } else if contentSyncError != nil {
+            scheduleContentSyncRetry()
+        }
+    }
+
+    private func scheduleContentSyncRetry() {
+        guard appIsActive, contentSyncRetryTask == nil, content != nil else { return }
+        let delay = contentSyncRetryDelaySeconds
+        contentSyncRetryDelaySeconds = min(delay * 2, 300)
+        contentSyncRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self else { return }
+            self.contentSyncRetryTask = nil
+            guard self.appIsActive else { return }
+            await self.resumeContentSync()
+        }
+    }
+
+    private func scheduleCatalogRetry() {
+        guard appIsActive, catalogRetryTask == nil else { return }
+        let delay = catalogRetryDelaySeconds
+        catalogRetryDelaySeconds = min(delay * 2, 300)
+        catalogRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self else { return }
+            self.catalogRetryTask = nil
+            guard self.appIsActive else { return }
+            if !self.movies.isEmpty {
+                await self.retryCatalogSilently()
+            } else if self.catalogSearchError != nil {
+                self.reload()
+            }
+        }
+    }
+
+    /// Refresh the first visible page in place. A failed request must not blank cached rows.
+    private func retryCatalogSilently() async {
+        guard let request = lastCatalogRequest else {
+            if catalogSearchError != nil { reload() }
+            return
+        }
+        guard !isLoadingMovies else {
+            scheduleCatalogRetry()
+            return
+        }
+        let generation = moviePageGeneration
+        let language = effectiveLanguage
+        do {
+            let page = try await catalog.page(request, language: language)
+            guard moviePageGeneration == generation, appIsActive else { return }
+            if page.isStale {
+                scheduleCatalogRetry()
+                return
+            }
+            let firstPageCount = min(request.limit, movies.count)
+            let sameFirstPage = movies.prefix(firstPageCount).map(\.movieQID) == page.movies.prefix(firstPageCount).map(\.movieQID)
+            if sameFirstPage && page.movies.count == firstPageCount {
+                movies.replaceSubrange(0..<firstPageCount, with: page.movies)
+            } else {
+                movies = page.movies
+                hasMoreMovies = page.hasMore
+            }
+            if !isListMode {
+                var seen = Set<String>()
+                storyLocationPins = movies.flatMap(\.locations).filter {
+                    $0.coordinate != nil && seen.insert($0.rawPlaceQID).inserted
+                }
+            }
+            catalogSearchError = nil
+            catalogRetryDelaySeconds = 30
+        } catch {
+            guard moviePageGeneration == generation, appIsActive else { return }
+            catalogSearchError = "Full catalog search is temporarily unavailable."
+            NSLog("[ReelSpan] Silent catalog refresh failed: %@", String(describing: error))
+            scheduleCatalogRetry()
+        }
     }
 
     private func acceptSyncedBatch(_ progress: StoryContentSyncService.SyncProgress) async {
@@ -143,7 +266,7 @@ final class AppModel: ObservableObject {
         databaseVersion = refreshed.databaseVersion()
         await searchData.configure(databaseURL: url)
         await moviePages.configure(databaseURL: url)
-        // Map rows use the local cache. The list uses the full server catalog and need not be reset.
+        // Reconcile changed story locations without interrupting the list's visible film rows.
         if !isListMode { reload() }
         if progress.isComplete && iCloudBackupEnabled {
             await restoreICloudBackup()
@@ -175,6 +298,18 @@ final class AppModel: ObservableObject {
 
     func setWherePlace(_ place: ModernWherePlace?) {
         selectedWhere = place
+        if !isListMode, let place {
+            let matched = place.category == "country"
+                ? content?.bestCountryMatch(candidateNames: [place.name, place.englishName], preferredLanguage: effectiveLanguage)
+                : content?.bestLocationMatch(candidateNames: [place.name, place.englishName], preferredLanguage: effectiveLanguage)
+            if let coordinate = matched?.coordinate {
+                selectedCoordinate = coordinate
+                displayedPlaceName = place.name
+                mapViewportIntent.select(PlaceSearchViewportPolicy.viewport(
+                    category: place.category == "country" ? .country : .locality,
+                    latitude: coordinate.latitude, longitude: coordinate.longitude, bounds: nil))
+            }
+        }
         reload()
     }
 
@@ -534,6 +669,8 @@ final class AppModel: ObservableObject {
     func reload() {
         clearMovies()
         hasMoreMovies = isListMode || movieLocationScope != nil
+        // A selected Where filter is valid even before a map pin has been selected.
+        if !isListMode && selectedWhere != nil { hasMoreMovies = true }
         loadMoreMovies()
     }
 
@@ -542,6 +679,7 @@ final class AppModel: ObservableObject {
         moviePageGeneration = UUID()
         movies = []
         storyLocationPins = []
+        lastCatalogRequest = nil
         isLoadingMovies = false
         hasMoreMovies = false
     }
@@ -570,33 +708,47 @@ final class AppModel: ObservableObject {
             ? "country:\(preferredCountryQID)" : selectedSort
         moviePageTask = Task { [weak self] in
             guard let self else { return }
-            if listMode && !favoritesOnly {
+            if !favoritesOnly {
                 let allYears = StoryTimeAvailabilityMatcher.includesUnknown(startYear: startYear, endYear: endYear)
                 let request = CatalogDiscoveryService.Request(
                     query: search, startYear: allYears ? nil : startYear,
                     endYear: allYears ? nil : endYear,
                     conceptQID: concept?.qid,
-                    placeQID: listScope.flatMap { scope in
+                    placeQID: (listMode ? listScope : (listScope ?? mapScope)).flatMap { scope in
                         if case .place(let qid) = scope { return qid }; return nil
                     },
-                    countryQID: listScope.flatMap { scope in
+                    countryQID: (listMode ? listScope : (listScope ?? mapScope)).flatMap { scope in
                         if case .country(_, let qid) = scope { return qid }; return nil
                     },
                     genre: genre, sort: sort, offset: offset,
                     limit: MoviePaginationPolicy.resultPageSize)
+                if offset == 0 { lastCatalogRequest = request }
                 do {
                     let page = try await catalog.page(request, language: language)
                     guard !Task.isCancelled, moviePageGeneration == generation else { return }
                     movies.append(contentsOf: page.movies)
+                    if !listMode {
+                        var seen = Set(storyLocationPins.map(\.rawPlaceQID))
+                        storyLocationPins.append(contentsOf: page.movies.flatMap(\.locations).filter { location in
+                            location.coordinate != nil && seen.insert(location.rawPlaceQID).inserted
+                        })
+                    }
                     hasMoreMovies = page.hasMore
-                    catalogSearchError = nil
+                    catalogRetryTask?.cancel()
+                    catalogRetryTask = nil
+                    catalogRetryDelaySeconds = 30
+                    catalogSearchError = page.isStale ? "Cached catalog page needs refresh" : nil
+                    if page.isStale { scheduleCatalogRetry() }
                     isLoadingMovies = false
                     return
                 } catch {
                     guard !Task.isCancelled, moviePageGeneration == generation else { return }
                     catalogSearchError = "Full catalog search is temporarily unavailable."
-                    // Local fallback is safe only for an unfiltered browse; never misreport partial matches.
-                    if !search.isEmpty || concept != nil || genre != nil || listScope != nil {
+                    NSLog("[ReelSpan] Discovery failed: %@", String(describing: error))
+                    scheduleCatalogRetry()
+                    // Local SQLite has only IDs and story relations; it cannot correctly
+                    // fulfill text/genre/concept queries or supply the full-catalog titles.
+                    if listMode || !search.isEmpty || concept != nil || genre != nil || listScope != nil {
                         hasMoreMovies = false
                         isLoadingMovies = false
                         return
@@ -610,7 +762,8 @@ final class AppModel: ObservableObject {
                 offset: offset, metadataService: metadataStore.service)
             guard !Task.isCancelled, moviePageGeneration == generation else { return }
             movies.append(contentsOf: page.movies)
-            storyLocationPins = page.storyLocations
+            var seen = Set(storyLocationPins.map(\.rawPlaceQID))
+            storyLocationPins.append(contentsOf: page.storyLocations.filter { seen.insert($0.rawPlaceQID).inserted })
             hasMoreMovies = page.hasMore
             isLoadingMovies = false
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Native adaptation of the list-mode HTML prototype. All rows come from the live catalog.
 struct FilmListView: View {
+    var showsMap = false
     @EnvironmentObject private var model: AppModel
     @State private var search = ""
     @State private var grouping = "all"
@@ -29,59 +30,59 @@ struct FilmListView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if grouping == "all" {
-                        ForEach(model.movies) { movie in filmRow(movie) }
-                    } else if grouping == "place" {
-                        if model.whereCatalog.isEmpty || (model.movieCountryQIDs.isEmpty && !model.movies.isEmpty) {
-                            ProgressView("Grouping story countries…").padding(24)
-                        } else {
-                            ForEach(continentGroups) { continent in
-                                HStack {
-                                    Image(systemName: "globe.europe.africa")
-                                    Text(continent.title).font(.system(.title3, design: .serif).bold())
-                                    Spacer()
-                                }
-                                .foregroundStyle(navy).padding(.horizontal, 15).padding(.top, 20)
-                                ForEach(continent.countryGroups) { country in
-                                    groupHeading(country.title, count: country.movies.count, icon: "mappin")
-                                    ForEach(country.movies) { movie in filmRow(movie) }
+            if !showsMap {
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if grouping == "all" {
+                            ForEach(model.movies) { movie in filmRow(movie) }
+                        } else if grouping == "place" {
+                            if model.whereCatalog.isEmpty || (model.movieCountryQIDs.isEmpty && !model.movies.isEmpty) {
+                                ProgressView("Grouping story countries…").padding(24)
+                            } else {
+                                ForEach(continentGroups) { continent in
+                                    HStack {
+                                        Image(systemName: "globe.europe.africa")
+                                        Text(continent.title).font(.system(.title3, design: .serif).bold())
+                                        Spacer()
+                                    }
+                                    .foregroundStyle(navy).padding(.horizontal, 15).padding(.top, 20)
+                                    ForEach(continent.countryGroups) { country in
+                                        groupHeading(country.title, count: country.movies.count, icon: "mappin")
+                                        ForEach(country.movies) { movie in filmRow(movie) }
+                                    }
                                 }
                             }
+                        } else {
+                            ForEach(groupedMovies) { group in
+                                groupHeading(group.title, count: group.movies.count, icon: "calendar")
+                                ForEach(group.movies) { movie in filmRow(movie) }
+                            }
                         }
-                    } else {
-                        ForEach(groupedMovies) { group in
-                            groupHeading(group.title, count: group.movies.count, icon: "calendar")
-                            ForEach(group.movies) { movie in filmRow(movie) }
+                        if model.isLoadingMovies {
+                            ProgressView().frame(maxWidth: .infinity).padding(18)
+                        } else if model.hasMoreMovies {
+                            Color.clear.frame(height: 32).onAppear { model.loadMoreMovies() }
+                        } else if model.movies.isEmpty && !model.isContentLoading {
+                            ContentUnavailableView(model.catalogSearchError == nil ? "No matching films" : "Films unavailable for now",
+                                                   systemImage: "film.stack",
+                                                   description: Text(model.catalogSearchError == nil
+                                                       ? "Try another place, time, or search term."
+                                                       : "Films will appear when this view can load."))
+                                .padding(.top, 65)
                         }
                     }
-                    if model.isLoadingMovies {
-                        ProgressView().frame(maxWidth: .infinity).padding(18)
-                    } else if model.hasMoreMovies {
-                        Color.clear.frame(height: 32).onAppear { model.loadMoreMovies() }
-                    } else if model.movies.isEmpty && !model.isContentLoading {
-                        ContentUnavailableView("No matching films", systemImage: "film.stack",
-                                               description: Text("Try another place, time, or search term."))
-                            .padding(.top, 65)
-                    }
-                    if let issue = model.catalogSearchError {
-                        Text(issue).font(.caption).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity).padding(12)
-                        Button("Retry full catalog") { model.reload() }
-                            .font(.caption).padding(.bottom, 20)
-                    }
+                    .padding(.horizontal, 11)
                 }
-                .padding(.horizontal, 11)
+                .scrollDismissesKeyboard(.interactively)
+                .background(Color(red: 0.98, green: 0.99, blue: 0.995))
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Color(red: 0.98, green: 0.99, blue: 0.995))
         }
         .background(.white)
+        .fixedSize(horizontal: false, vertical: showsMap)
         .onAppear {
             search = model.globalSearch
-            model.reload()
+            if model.movies.isEmpty && !model.isLoadingMovies { model.reload() }
         }
         .task(id: search) {
             do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
@@ -135,8 +136,8 @@ struct FilmListView: View {
                 headerIcon("gearshape") { showSettings = true }
             }
             HStack(spacing: 2) {
-                modeButton("List", symbol: "list.bullet", selected: true) { }
-                modeButton("Map", symbol: "map", selected: false) { model.setListMode(false) }
+                modeButton("List", symbol: "list.bullet", selected: !showsMap) { model.setListMode(true) }
+                modeButton("Map", symbol: "map", selected: showsMap) { model.setListMode(false) }
             }
             .padding(3).background(pale, in: RoundedRectangle(cornerRadius: 12))
             HStack(spacing: 8) {
@@ -199,26 +200,8 @@ struct FilmListView: View {
                 }
                 .font(.caption2)
             }
-            if let message = model.contentSyncError {
-                Text("Cached films are available. Story data update paused: " + message)
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-                Button("Retry cached story update") { Task { await model.resumeContentSync() } }.font(.caption2)
-            }
-            if model.isUpdatingContent && model.syncComplete {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
-                    Text("Updating cached story data…").font(.caption2).foregroundStyle(.secondary)
-                    Spacer()
-                }
-            }
-            if !model.syncComplete && model.syncTotal > 0 {
-                HStack(spacing: 6) {
-                    ProgressView(value: Double(model.syncDownloaded), total: Double(model.syncTotal))
-                    Text("\(model.syncDownloaded)/\(model.syncTotal) cached")
-                        .font(.system(size: 9)).foregroundStyle(.secondary)
-                }
-                .accessibilityLabel("Downloading offline catalog")
-            }
+            // Initial and incremental sync run in the background without technical
+            // error banners, progress bars or manual retry controls.
         }
         .padding(.horizontal, 15).padding(.top, 6).padding(.bottom, 10)
         .background(.white)
@@ -380,9 +363,8 @@ struct FilmListView: View {
                         if model.isLoadingWhereCatalog {
                             ProgressView("Loading place catalog…")
                         } else {
-                            Text(model.whereCatalogError ?? "Place options are unavailable right now.")
+                            Text("Place options will appear when available.")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Button("Retry place catalog") { Task { await model.ensureWhereCatalog() } }
                         }
                     } else if !whereQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Section("Matching countries and cities") {

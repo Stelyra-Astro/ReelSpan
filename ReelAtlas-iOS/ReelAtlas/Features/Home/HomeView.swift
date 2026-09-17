@@ -3,6 +3,7 @@ import MapKit
 import UIKit
 
 struct HomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     private enum PendingModal {
         case yearPicker
         case settings
@@ -41,14 +42,14 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             if model.isListMode {
-                FilmListView().environmentObject(model)
+                FilmListView(showsMap: false).environmentObject(model)
             } else {
             MapReader { proxy in
                 Map(position: $camera) {
                     ForEach(model.storyLocationPins) { location in
                         if let coordinate = location.coordinate {
                             Marker(location.name, systemImage: "film.fill", coordinate: coordinate)
-                                .tint(Color(red: 0.45, green: 0.16, blue: 0.12))
+                                .tint(Color(red: 0.11, green: 0.20, blue: 0.28))
                         }
                     }
                     if let marker = model.temporarySearchMarker {
@@ -64,6 +65,7 @@ struct HomeView: View {
                     SpatialTapGesture().onEnded { value in
                         guard let coordinate = proxy.convert(value.location, from: .local) else { return }
                         Task {
+                            if model.selectedWhere != nil { model.setWherePlace(nil) }
                             await model.selectMapCoordinate(coordinate)
                             drawerState.searchFinished()
                         }
@@ -83,27 +85,38 @@ struct HomeView: View {
                 }
             }
 
-            VStack(spacing: 8) {
-                topControls
+            VStack(spacing: 0) {
+                // Keep the same atlas header, search and four filters in both modes.
+                FilmListView(showsMap: true).environmentObject(model)
                 Spacer()
+                if !model.movies.isEmpty {
+                    Button {
+                        drawerState.showResults()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "film.stack")
+                            Text("\(model.selectedWhere?.name ?? model.displayedPlaceName) · \(model.movies.count)\(model.hasMoreMovies ? "+" : "") films")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(height: 44)
+                        .background(Color(red: 0.11, green: 0.20, blue: 0.28), in: Capsule())
+                        .shadow(color: .black.opacity(0.17), radius: 10, y: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 16)
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
 
-            LinearGradient(
-                colors: [
-                    Color(red: 0.72, green: 0.56, blue: 0.34).opacity(0.035),
-                    Color(red: 0.48, green: 0.29, blue: 0.13).opacity(0.025)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .blendMode(.multiply)
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
             }
         }
-        .onAppear { if !model.isListMode { updateCamera() } }
+        .onAppear {
+            model.setAppActive(true)
+            if !model.isListMode { updateCamera() }
+        }
         .task {
             await model.resolveInitialLocation()
             if !model.isListMode { updateCamera() }
@@ -113,8 +126,12 @@ struct HomeView: View {
                 drawerState.move(to: .hidden)
             } else {
                 updateCamera()
-                drawerState.showResults()
+                // A full-screen map stays visible until a film or the result pill is tapped.
+                drawerState.move(to: .hidden)
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            model.setAppActive(phase == .active)
         }
         .onChange(of: model.searchViewport) { _, viewport in
             if viewport != nil { updateCamera() }
@@ -631,6 +648,7 @@ struct HomeView: View {
         mapCenterTask = Task {
             try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
+            if model.selectedWhere != nil { model.setWherePlace(nil) }
             await model.selectMapCoordinate(coordinate, reportErrors: false)
             drawerState.mapFocusUpdated()
         }

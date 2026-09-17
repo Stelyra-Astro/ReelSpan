@@ -30,9 +30,10 @@ def test_default_country_sort_survives_location_fallback():
     assert 'preferredCountryQID = "Q30"' in MODEL
     assert r'country:\(preferredCountryQID)' in MODEL
 
-def test_where_catalog_network_failure_offers_retry_instead_of_permanent_spinner():
+def test_where_catalog_network_failure_is_silent_and_retries_on_foreground():
     assert 'whereCatalogError' in MODEL
-    assert 'Retry place catalog' in FILM
+    assert 'Retry place catalog' not in FILM
+    assert 'if whereCatalog.isEmpty { await ensureWhereCatalog() }' in MODEL
     assert 'isLoadingWhereCatalog' in MODEL
 
 def test_static_preview_has_nested_place_headings_and_all_missing_data_paths():

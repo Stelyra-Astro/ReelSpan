@@ -127,6 +127,7 @@ actor StoryContentSyncService {
         } catch {
             // Completed metadata stays at the previous version until the entire diff is verified.
             lastSyncError = error.localizedDescription
+            NSLog("[ReelSpan] Background content reconciliation failed: %@", String(describing: error))
         }
     }
 
@@ -468,13 +469,40 @@ actor StoryContentSyncService {
     private func perform(_ original: URLRequest) async throws -> Data {
         var request = original
         request.setValue(publishableKey, forHTTPHeaderField: "apikey")
-        request.timeoutInterval = 30
+        request.timeoutInterval = 20
         if let transport { return try await transport(request) }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw SQLiteError.step("Supabase content request failed")
+        for attempt in 0..<3 {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw SQLiteError.step("Invalid Supabase response")
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    // The old generic error concealed the actual status (401/404/429/5xx).
+                    // Log only the PostgREST error code and endpoint, never response bodies or keys.
+                    let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? String ?? "unknown"
+                    NSLog("[ReelSpan] Supabase HTTP %ld PostgREST=%@ path=%@", http.statusCode, code,
+                          request.url?.path ?? "unknown")
+                    if attempt < 2 && [408, 429, 500, 502, 503, 504].contains(http.statusCode) {
+                        try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
+                        continue
+                    }
+                    throw SQLiteError.step("Supabase HTTP \(http.statusCode) (\(code))")
+                }
+                return data
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                NSLog("[ReelSpan] Supabase sync failed path=%@ error=%@",
+                      request.url?.path ?? "unknown", String(describing: error))
+                if attempt < 2, error is URLError {
+                    try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
+                    continue
+                }
+                throw error
+            }
         }
-        return data
+        throw SQLiteError.step("Supabase sync retry exhausted")
     }
 
     private func insert(_ database: SQLiteDatabase, _ sql: String, _ bindings: [SQLiteBindValue]) throws {
