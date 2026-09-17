@@ -12,7 +12,7 @@ Approved design: user confirmed candidate-first text and filter optimization, re
 - [x] Create migration through `supabase migration new discover_indexed_candidates`. Add stored searchable text and trigram indexes; retain all candidates and original score/order/filter semantics. Move overview/genres loading after pagination.
 - [ ] Compare complete JSON rows against captured baselines and test literal wildcard queries; verify real anonymous HTTP timing and pagination.
 - [x] Add manual retry only to unavailable empty state; initialize missing story content or refresh the current request without clearing cached rows. Compile application and run Swift, Python, sync and count tests.
-- [ ] Record production migration and remaining limitations, update release numbering, archive Build 13, verify signing/version/dSYM and authorized upload, commit and push main.
+- [x] Record production migration and remaining limitations, update release numbering, archive Build 13, verify signing/version/dSYM and authorized upload, commit and push main.
 
 Constraints: bundle com.xiaoguiwk.ReelSpan; public read-only discovery API; no new raw table access; no secrets/artifacts committed; no review submission. Performance goal is common database queries below one second, measured rather than assumed.
 

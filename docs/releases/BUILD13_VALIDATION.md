@@ -34,4 +34,10 @@ Field-level trigram indexes were subsequently deployed (`discover_field_rank_ind
 
 The generic overlapping-chunk redesign was not deployed: production write-lock/backfill risk was rejected by safety review; the user paused further Supabase changes. Both drafts are outside `supabase/migrations/`, under `docs/supabase/drafts/`, to prevent accidental deployment. Details: `docs/diagnostics/2026-09-17-supabase-search-status.md`.
 
-Build 13 upload is pending at this pre-upload commit. Raw logs and artifacts remain ignored under `Artifacts/silent-refresh-validation/build13/`. Automated tests do not substitute for real-device upgrade/offline UI acceptance; that remains a separate validation step. No App Store review submission is authorized.
+## Upload
+
+After source commit `a22ac97` was pushed to main, the final archive was uploaded with explicit App Store Connect API credentials using `xcodebuild -exportArchive` and `manageAppVersionAndBuildNumber=false`. At 2026-09-17 12:26:11 Asia/Shanghai the command exited 0 and logged `Upload succeeded` / `EXPORT SUCCEEDED`; the package was processing. No review was submitted. Processing completion / TestFlight readiness must be verified separately.
+
+Export logs identify Store profile UUID `64e37f7e-6f7b-4d25-8f54-85da305b7b2a` and `Apple Distribution: KUN WANG (KCC8FFFAA5)`, certificate SHA-1 `249EEAAC5AAFAABD58871E60E063F9C3E367704C`, consistent with the verified managed-signing chain.
+
+Raw logs and artifacts remain ignored under `Artifacts/silent-refresh-validation/build13/`. Automated tests do not substitute for real-device upgrade/offline UI acceptance; that remains a separate validation step. No App Store review submission is authorized.
